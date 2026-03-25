@@ -170,14 +170,18 @@ Messenger — это Android-приложение для обмена сообщ
       
           %% Медиа
           MediaViewer -->|Назад| IndividualChat
-          MediaViewer -->|Назад| GroupChat
+          MediaViewer -->|Назад| GroupChat 
+```
 
----------
-## 🔄 Архитектура и поток данных
+---
+
+##  Архитектура и поток данных
+
 Приложение построено по паттерну **MVVM (Model-View-ViewModel)** с использованием **Repository Pattern**.
 
 
 **Преимущества:**
+
 - Четкое разделение ответственности между слоями
 - ViewModel сохраняет состояние при повороте экрана
 - Легко тестировать бизнес-логику без UI
@@ -187,71 +191,71 @@ Messenger — это Android-приложение для обмена сообщ
 ### Схема взаимодействия компонентов
 
 ```mermaid
-flowchart LR
-    %% Стилизация узлов
-    classDef ui fill:#FFE5E5,stroke:#EF4444,stroke-width:2px
-    classDef vm fill:#E5F3FF,stroke:#3B82F6,stroke-width:2px
-    classDef repo fill:#E5FFE5,stroke:#10B981,stroke-width:2px
-    classDef data fill:#FFF5E5,stroke:#F59E0B,stroke-width:2px
-
-    %% UI Layer
-    subgraph UI [" UI Layer (View)"]
-        Activity[ Activity/Fragment]:::ui
-        Adapter[ RecyclerView Adapter]:::ui
-        CustomView[ Custom View]:::ui
-    end
-
-    %% ViewModel Layer
-    subgraph VM [" ViewModel Layer"]
-        ViewModel[ ViewModel]:::vm
-        LiveData[ LiveData/Observer]:::vm
-        State[ UI State]:::vm
-    end
-
-    %% Repository Layer
-    subgraph Repo [" Repository Layer"]
-        Repository[ Repository]:::repo
-        Cache[ Local Cache]:::repo
-    end
-
-    %% Data Layer
-    subgraph Data [" Data Layer"]
-        API[ Retrofit API]:::data
-        Database[ Room Database]:::data
-        Preferences[ SharedPreferences]:::data
-        Backend[ Spring Boot Server]:::data
-    end
-
-    %% Потоки данных: UI → ViewModel
-    Activity -->|1. User Action| ViewModel
-    Adapter -->|1. Item Click| ViewModel
-    CustomView -->|1. Input Changed| ViewModel
-
-    %% Потоки данных: ViewModel → UI
-    ViewModel -->|2. Observe LiveData| Activity
-    ViewModel -->|2. Update State| Adapter
-    LiveData -->|2. Auto Update| CustomView
-
-    %% Потоки данных: ViewModel → Repository
-    ViewModel -->|3. Request Data| Repository
-    ViewModel -->|3. Save Data| Repository
-
-    %% Потоки данных: Repository → Data Sources
-    Repository -->|4a. Network First| API
-    Repository -->|4b. Cache Fallback| Database
-    Repository -->|4c. Settings| Preferences
-
-    %% Потоки данных: Data Sources → Repository
-    API -->|5a. JSON Response| Repository
-    Database -->|5b. Cached Entities| Repository
-    Preferences -->|5c. Stored Values| Repository
-
-    %% Внешние вызовы
-    API <-->|6. HTTP/HTTPS| Backend
-
-    %% Легенда
-    linkStyle 0,1,2 stroke:#EF4444,stroke-width:2px
-    linkStyle 3,4,5 stroke:#3B82F6,stroke-width:2px
-    linkStyle 6,7,8 stroke:#10B981,stroke-width:2px
-    linkStyle 9,10,11 stroke:#F59E0B,stroke-width:2px
-    linkStyle 12 stroke:#9CA3AF,stroke-width:2px,stroke-dasharray:5 5
+    flowchart LR
+        %% Стилизация узлов
+        classDef ui fill:#FFE5E5,stroke:#EF4444,stroke-width:2px
+        classDef vm fill:#E5F3FF,stroke:#3B82F6,stroke-width:2px
+        classDef repo fill:#E5FFE5,stroke:#10B981,stroke-width:2px
+        classDef data fill:#FFF5E5,stroke:#F59E0B,stroke-width:2px
+    
+        %% UI Layer
+        subgraph UI [" UI Layer (View)"]
+            Activity[ Activity/Fragment]:::ui
+            Adapter[ RecyclerView Adapter]:::ui
+            CustomView[ Custom View]:::ui
+        end
+    
+        %% ViewModel Layer
+        subgraph VM [" ViewModel Layer"]
+            ViewModel[ ViewModel]:::vm
+            LiveData[ LiveData/Observer]:::vm
+            State[ UI State]:::vm
+        end
+    
+        %% Repository Layer
+        subgraph Repo [" Repository Layer"]
+            Repository[ Repository]:::repo
+            Cache[ Local Cache]:::repo
+        end
+    
+        %% Data Layer
+        subgraph Data [" Data Layer"]
+            API[ Retrofit API]:::data
+            Database[ Room Database]:::data
+            Preferences[ SharedPreferences]:::data
+            Backend[ Spring Boot Server]:::data
+        end
+    
+        %% Потоки данных: UI → ViewModel
+        Activity -->|1. User Action| ViewModel
+        Adapter -->|1. Item Click| ViewModel
+        CustomView -->|1. Input Changed| ViewModel
+    
+        %% Потоки данных: ViewModel → UI
+        ViewModel -->|2. Observe LiveData| Activity
+        ViewModel -->|2. Update State| Adapter
+        LiveData -->|2. Auto Update| CustomView
+    
+        %% Потоки данных: ViewModel → Repository
+        ViewModel -->|3. Request Data| Repository
+        ViewModel -->|3. Save Data| Repository
+    
+        %% Потоки данных: Repository → Data Sources
+        Repository -->|4a. Network First| API
+        Repository -->|4b. Cache Fallback| Database
+        Repository -->|4c. Settings| Preferences
+    
+        %% Потоки данных: Data Sources → Repository
+        API -->|5a. JSON Response| Repository
+        Database -->|5b. Cached Entities| Repository
+        Preferences -->|5c. Stored Values| Repository
+    
+        %% Внешние вызовы
+        API <-->|6. HTTP/HTTPS| Backend
+    
+        %% Легенда
+        linkStyle 0,1,2 stroke:#EF4444,stroke-width:2px
+        linkStyle 3,4,5 stroke:#3B82F6,stroke-width:2px
+        linkStyle 6,7,8 stroke:#10B981,stroke-width:2px
+        linkStyle 9,10,11 stroke:#F59E0B,stroke-width:2px
+        linkStyle 12 stroke:#9CA3AF,stroke-width:2px,stroke-dasharray:5 5
