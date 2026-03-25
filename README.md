@@ -26,21 +26,20 @@ Messenger — это Android-приложение для обмена сообщ
  **[docs/schemas/](./docs/schemas/)**
 
 ### Экраны приложения:
-
-| Экран           | Скриншот 
-|-----------------|----------|
-| Login           | [1_login/](./docs/schemas/1_login/)
-| Register        | [2_register/](./docs/schemas/2_register/) 
-| Chat List       | [3_chat_list/](./docs/schemas/3_chat_list/)
-| Individual Chat | [4_individualChat/](./docs/schemas/4_individualChat/)
-| Group Chat      | [5_groupChat/](./docs/schemas/5_groupChat/)
-| Profile         | [6_profile/](./docs/schemas/6_profile/)
-| ️ Settings      | [7_settings/](./docs/schemas/7_settings/) 
-| Chat info       | [8_chatInfo/](./docs/schemas/8_chatInfo/)
-| Contacts        | [9_contacts/](./docs/schemas/9_contacts/) 
-| Search          | [10_search/](./docs/schemas/10_search/)
-| Notifications   | [11_notifications/](./docs/schemas/11_notifications/)
-| Media viewer    | [12_mediaViewer/](./docs/schemas/12_mediaViewer/)
+| Экран | Скриншоты состояний |
+|-------|---------------------|
+| **Login** | [Default](./docs/schemas/1_login/Login_default.png) • [Loading](./docs/schemas/1_login/Login_loading.png) • [Error](./docs/schemas/1_login/Login_error.png) |
+| **Register** | [Default](./docs/schemas/2_register/Register_default.png) • [Loading](./docs/schemas/2_register/Register_loading.png) • [Error](./docs/schemas/2_register/Register_error.png) |
+| **Chat List** | [Default](./docs/schemas/3_chatList/Chat_list_default.png) • [Loading](./docs/schemas/3_chatList/Chat_list_loading.png) • [Empty](./docs/schemas/3_chatList/Chat_list_empty.png) • [Error](./docs/schemas/3_chatList/Chat_list_error.png) |
+| **Individual Chat** | [Default](./docs/schemas/4_individualChat/Individual_chat_default.png) • [Empty](./docs/schemas/4_individualChat/Individual_chat_empty.png) • [Error](./docs/schemas/4_individualChat/Individual_chat_error.png) |
+| **Group Chat** | [Default](./docs/schemas/5_groupChat/Group_chat_default.png) • [Empty](./docs/schemas/5_groupChat/Group_chat_empty.png) • [Error](./docs/schemas/5_groupChat/Group_chat_error.png) |
+| **Profile** | [Default](./docs/schemas/6_profile/Profile_default.png) • [Loading](./docs/schemas/6_profile/Profile_loading.png) |
+| **Settings** | [Default](./docs/schemas/7_settings/Settings_default.png) |
+| **Chat Info** | [Default](./docs/schemas/8_chatInfo/Chat_info.png) |
+| **Contacts** | [Default](./docs/schemas/9_contacts/Contacts_default.png) • [Empty](./docs/schemas/9_contacts/Contacts_empty.png) |
+| **Search** | [Default](./docs/schemas/10_search/Search_default.png) • [Empty Results](./docs/schemas/10_search/Search_empty_results.png) |
+| **Notifications** | [Default](./docs/schemas/11_notifications/Notifications.png) |
+| **Media Viewer** | [Default](./docs/schemas/12_mediaViewer/Media_viewer_default.png) • [Loading](./docs/schemas/12_mediaViewer/Media_viewer_loading.png) |
 
 ### Цветовая палитра:
 
