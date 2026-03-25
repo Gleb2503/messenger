@@ -20,6 +20,7 @@ Messenger — это Android-приложение для обмена сообщ
 ---
 
 ##  Дизайн
+[Дизайн](https://www.figma.com/design/0k1WqYjjHA4BM5RQLZ9xq5/Messenger?node-id=99-1258&t=dXEpxy9eob2E4WRH-0)
 
 Полные макеты и скриншоты всех экранов доступны в папке:
 
@@ -87,6 +88,92 @@ Messenger — это Android-приложение для обмена сообщ
 
 
 
+
+  ##  Навигация между экранами
+  ## 🗺️ Навигация между экранами
+```mermaid
+      flowchart TD
+          %% Стилизация узлов
+          classDef auth fill:#FFE5E5,stroke:#EF4444,stroke-width:2px
+          classDef main fill:#E5F3FF,stroke:#3B82F6,stroke-width:2px
+          classDef chat fill:#E5FFE5,stroke:#10B981,stroke-width:2px
+          classDef settings fill:#FFF5E5,stroke:#F59E0B,stroke-width:2px
+      
+          %% Экраны авторизации
+          Login[ Login]:::auth
+          Register[ Register]:::auth
+      
+          %% Главный экран
+          ChatList[ Chat List]:::main
+      
+          %% Чаты
+          IndividualChat[Individual Chat]:::chat
+          GroupChat[Group Chat]:::chat
+          ChatInfo[ℹChat Info]:::settings
+      
+          %% Профиль и настройки
+          Profile[ Profile]:::settings
+          Settings[ Settings]:::settings
+          Notifications[ Notifications]:::settings
+      
+          %% Поиск и контакты
+          Search[ Search]:::main
+          Contacts[Contacts]:::main
+      
+          %% Медиа
+          MediaViewer[Media Viewer]:::chat
+      
+          %% Навигация авторизации
+          Login -->|Нет аккаунта| Register
+          Register -->|Есть аккаунт| Login
+          Login -->|Успешный вход| ChatList
+          Register -->|Успешная регистрация| ChatList
+      
+          %% Навигация из Chat List
+          ChatList -->|Тап на чат| IndividualChat
+          ChatList -->|Тап на группу| GroupChat
+          ChatList -->|Тап на профиль| Profile
+          ChatList -->|Тап на поиск| Search
+          ChatList -->|FAB Новый чат| Contacts
+          ChatList -->|Настройки| Settings
+      
+          %% Навигация из чатов
+          IndividualChat -->|Шапка| ChatInfo
+          IndividualChat -->|Назад| ChatList
+          IndividualChat -->|Медиа| MediaViewer
+      
+          GroupChat -->|Шапка| ChatInfo
+          GroupChat -->|Назад| ChatList
+          GroupChat -->|Медиа| MediaViewer
+      
+          ChatInfo -->|Назад| IndividualChat
+          ChatInfo -->|Назад| GroupChat
+      
+          %% Профиль и настройки
+          Profile -->|Настройки| Settings
+          Profile -->|Назад| ChatList
+          Profile -->|Редактировать| Profile
+      
+          Settings -->|Назад| Profile
+          Settings -->|Назад| ChatList
+          Settings -->|Уведомления| Notifications
+          Settings -->|Выйти| Login
+      
+          Notifications -->|Назад| Settings
+      
+          %% Поиск и контакты
+          Search -->|Результат| IndividualChat
+          Search -->|Назад| ChatList
+      
+          Contacts -->|Выбор контакта| IndividualChat
+          Contacts -->|Назад| ChatList
+      
+          %% Медиа
+          MediaViewer -->|Назад| IndividualChat
+          MediaViewer -->|Назад| GroupChat
+
+---------
+## 🔄 Архитектура и поток данных
 Приложение построено по паттерну **MVVM (Model-View-ViewModel)** с использованием **Repository Pattern**.
 
 
@@ -96,92 +183,6 @@ Messenger — это Android-приложение для обмена сообщ
 - Легко тестировать бизнес-логику без UI
 - Простое добавление новых функций
 
-    ##  Навигация между экранами
-    ## 🗺️ Навигация между экранами
-
-    ```mermaid
-    flowchart TD
-        %% Стилизация узлов
-        classDef auth fill:#FFE5E5,stroke:#EF4444,stroke-width:2px
-        classDef main fill:#E5F3FF,stroke:#3B82F6,stroke-width:2px
-        classDef chat fill:#E5FFE5,stroke:#10B981,stroke-width:2px
-        classDef settings fill:#FFF5E5,stroke:#F59E0B,stroke-width:2px
-    
-        %% Экраны авторизации
-        Login[ Login]:::auth
-        Register[ Register]:::auth
-    
-        %% Главный экран
-        ChatList[ Chat List]:::main
-    
-        %% Чаты
-        IndividualChat[Individual Chat]:::chat
-        GroupChat[Group Chat]:::chat
-        ChatInfo[ℹChat Info]:::settings
-    
-        %% Профиль и настройки
-        Profile[ Profile]:::settings
-        Settings[ Settings]:::settings
-        Notifications[ Notifications]:::settings
-    
-        %% Поиск и контакты
-        Search[ Search]:::main
-        Contacts[Contacts]:::main
-    
-        %% Медиа
-        MediaViewer[Media Viewer]:::chat
-    
-        %% Навигация авторизации
-        Login -->|Нет аккаунта| Register
-        Register -->|Есть аккаунт| Login
-        Login -->|Успешный вход| ChatList
-        Register -->|Успешная регистрация| ChatList
-    
-        %% Навигация из Chat List
-        ChatList -->|Тап на чат| IndividualChat
-        ChatList -->|Тап на группу| GroupChat
-        ChatList -->|Тап на профиль| Profile
-        ChatList -->|Тап на поиск| Search
-        ChatList -->|FAB Новый чат| Contacts
-        ChatList -->|Настройки| Settings
-    
-        %% Навигация из чатов
-        IndividualChat -->|Шапка| ChatInfo
-        IndividualChat -->|Назад| ChatList
-        IndividualChat -->|Медиа| MediaViewer
-    
-        GroupChat -->|Шапка| ChatInfo
-        GroupChat -->|Назад| ChatList
-        GroupChat -->|Медиа| MediaViewer
-    
-        ChatInfo -->|Назад| IndividualChat
-        ChatInfo -->|Назад| GroupChat
-    
-        %% Профиль и настройки
-        Profile -->|Настройки| Settings
-        Profile -->|Назад| ChatList
-        Profile -->|Редактировать| Profile
-    
-        Settings -->|Назад| Profile
-        Settings -->|Назад| ChatList
-        Settings -->|Уведомления| Notifications
-        Settings -->|Выйти| Login
-    
-        Notifications -->|Назад| Settings
-    
-        %% Поиск и контакты
-        Search -->|Результат| IndividualChat
-        Search -->|Назад| ChatList
-    
-        Contacts -->|Выбор контакта| IndividualChat
-        Contacts -->|Назад| ChatList
-    
-        %% Медиа
-        MediaViewer -->|Назад| IndividualChat
-        MediaViewer -->|Назад| GroupChat
-
----------
-## 🔄 Архитектура и поток данных
 
 ### Схема взаимодействия компонентов
 
