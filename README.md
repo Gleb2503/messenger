@@ -23,24 +23,24 @@ Messenger — это Android-приложение для обмена сообщ
 
 Полные макеты и скриншоты всех экранов доступны в папке:
 
- **[docs/schemas/](docs/schemas/)**
+ **[docs/schemas/](./docs/schemas/)**
 
 ### Экраны приложения:
 
 | Экран           | Скриншот 
 |-----------------|----------|
-| Login           | [01_login/](docs/schemas/01_login/)
-| Register        | [02_register/](docs/schemas/02_register/) 
-| Chat List       | [03_chat_list/](docs/schemas/03_chat_list/)
-| Individual Chat | [04_individualChat/](docs/schemas/04_individualChat/)
-| Group Chat      | [05_groupChat/](docs/schemas/05_groupChat/)
-| Profile         | [06_profile/](docs/schemas/06_profile/)
-| ️ Settings      | [07_settings/](docs/schemas/07_settings/) 
-| Chat info       | [08_chatInfo/](docs/schemas/08_chatInfo/)
-| Contacts        | [09_contacts/](docs/schemas/09_contacts/) 
-| Search          | [10_search/](docs/schemas/10_search/)
-| Notifications   | [11_notifications/](docs/schemas/11_notifications/)
-| Media viewer    | [12_mediaViewer/](docs/schemas/12_mediaViewer/)
+| Login           | [1_login/](./docs/schemas/1_login/)
+| Register        | [2_register/](./docs/schemas/2_register/) 
+| Chat List       | [3_chat_list/](./docs/schemas/3_chat_list/)
+| Individual Chat | [4_individualChat/](./docs/schemas/4_individualChat/)
+| Group Chat      | [5_groupChat/](./docs/schemas/5_groupChat/)
+| Profile         | [6_profile/](./docs/schemas/6_profile/)
+| ️ Settings      | [7_settings/](./docs/schemas/7_settings/) 
+| Chat info       | [8_chatInfo/](./docs/schemas/8_chatInfo/)
+| Contacts        | [9_contacts/](./docs/schemas/9_contacts/) 
+| Search          | [10_search/](./docs/schemas/10_search/)
+| Notifications   | [11_notifications/](./docs/schemas/11_notifications/)
+| Media viewer    | [12_mediaViewer/](./docs/schemas/12_mediaViewer/)
 
 ### Цветовая палитра:
 
@@ -87,7 +87,7 @@ Messenger — это Android-приложение для обмена сообщ
 
 ---
 
-##  Архитектура
+
 
 Приложение построено по паттерну **MVVM (Model-View-ViewModel)** с использованием **Repository Pattern**.
 

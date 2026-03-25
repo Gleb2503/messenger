@@ -1,5 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+
+    <color name="primary">#44ACCA</color>
+    <color name="primary_variant">#3B8297</color>
+    <color name="primary_light">#E0F2F1</color>
+    <color name="on_primary">#FFFFFF</color>
+
+
+    <color name="secondary">#10B981</color>
+    <color name="secondary_variant">#059669</color>
+    <color name="on_secondary">#FFFFFF</color>
+
+
+    <color name="background">#F9FAFB</color>
+    <color name="background_dark">#111827</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_dark">#1F2937</color>
+    <color name="surface_variant">#F3F4F6</color>
+    <color name="surface_variant_dark">#374151</color>
+    <color name="outline">#D1D5DB</color>
+    <color name="outline_dark">#4B5563</color>
+
+
+    <color name="text_primary">#111827</color>
+    <color name="text_primary_dark">#F9FAFB</color>
+    <color name="text_secondary">#6B7280</color>
+    <color name="text_secondary_dark">#9CA3AF</color>
+    <color name="text_tertiary">#9CA3AF</color>
+    <color name="text_tertiary_dark">#6B7280</color>
+
+
+    <color name="error">#EF4444</color>
+    <color name="error_container">#FEE2E2</color>
+    <color name="on_error">#FFFFFF</color>
+    <color name="warning">#F59E0B</color>
+    <color name="warning_container">#FEF3C7</color>
+    <color name="success">#10B981</color>
+    <color name="success_container">#D1FAE5</color>
+    <color name="info">#3B82F6</color>
+    <color name="info_container">#DBEAFE</color>
+
+
+    <color name="message_incoming">#FFFFFF</color>
+    <color name="message_incoming_dark">#374151</color>
+    <color name="message_outgoing">#44ACCA</color>
+    <color name="message_outgoing_dark">#3B8297</color>
+    <color name="status_online">#10B981</color>
+    <color name="status_offline">#9CA3AF</color>
+    <color name="status_away">#F59E0B</color>
+    <color name="unread_badge">#44ACCA</color>
+    <color name="unread_on_badge">#FFFFFF</color>
+
+    <color name="gradient_start">#44ACCA</color>
+    <color name="gradient_end">#87DAF2</color>
+
+    <color name="spinner_background">#FFF0EA</color>
 </resources>
