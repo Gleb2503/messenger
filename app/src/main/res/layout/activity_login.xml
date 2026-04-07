@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/background">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingHorizontal="32dp"
+        android:paddingVertical="48dp">
+
+
+        <View
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:background="@drawable/bg_logo_gradient"
+            android:layout_marginBottom="16dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Vireo"
+            android:textSize="32sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+        android:layout_marginBottom="48dp"/>
+
+        <FrameLayout
+            android:id="@+id/phoneContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp">
+
+            <EditText
+                android:id="@+id/phoneInput"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_input_field"
+                android:hint="Номер телефона"
+                android:paddingHorizontal="16dp"
+                android:textSize="16sp"
+                android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_tertiary"
+            android:inputType="phone"
+            android:maxLines="1"/>
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/phoneErrorText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/error"
+        android:textSize="12sp"
+        android:visibility="gone"
+        android:layout_marginTop="-12dp"
+        android:layout_marginBottom="16dp"/>
+
+        <FrameLayout
+            android:id="@+id/passwordContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp">
+
+            <EditText
+                android:id="@+id/passwordInput"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_input_field"
+                android:hint="Пароль"
+                android:paddingHorizontal="16dp"
+                android:paddingEnd="48dp"
+                android:textSize="16sp"
+                android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_tertiary"
+            android:inputType="textPassword"
+            android:maxLines="1"/>
+
+            <ImageView
+                android:id="@+id/togglePasswordVisibility"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_eye"
+                android:layout_gravity="center_vertical|end"
+                android:layout_marginEnd="16dp"
+                android:clickable="true"
+                android:focusable="true"/>
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/passwordErrorText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/error"
+        android:textSize="12sp"
+        android:visibility="gone"
+        android:layout_marginTop="-12dp"
+        android:layout_marginBottom="24dp"/>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp">
+
+            <Button
+                android:id="@+id/loginButton"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_button_primary"
+                android:text="Войти"
+                android:textColor="@color/on_primary"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:enabled="true"/>
+
+            <ProgressBar
+                android:id="@+id/progressBar"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:indeterminateTint="@color/on_primary"
+            android:visibility="gone"/>
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/forgotPasswordText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Забыли пароль?"
+            android:textColor="@color/primary"
+        android:textSize="14sp"
+        android:layout_marginBottom="32dp"
+        android:clickable="true"
+        android:focusable="true"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="32dp">
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1"
+                android:background="@color/outline"
+            android:layout_marginHorizontal="16dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ИЛИ"
+                android:textColor="@color/text_tertiary"
+            android:textSize="12sp"
+            android:layout_marginHorizontal="16dp"/>
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1"
+                android:background="@color/outline"
+            android:layout_marginHorizontal="16dp"/>
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/registerButton"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="@drawable/bg_button_outline"
+            android:text="Создать аккаунт"
+            android:textColor="@color/primary"
+        android:textSize="16sp"
+        android:textStyle="bold"/>
+
+    </LinearLayout>
+</ScrollView>

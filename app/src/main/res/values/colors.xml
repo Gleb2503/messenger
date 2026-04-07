@@ -55,4 +55,7 @@
     <color name="gradient_end">#87DAF2</color>
 
     <color name="spinner_background">#FFF0EA</color>
+    <color name="avatar_gradient_start">#87DAF2</color>
+    <color name="avatar_gradient_end">#44ACCA</color>
+
 </resources>

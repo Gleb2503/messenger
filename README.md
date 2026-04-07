@@ -20,7 +20,7 @@ Messenger — это Android-приложение для обмена сообщ
 ---
 
 ##  Дизайн
-[Дизайн](https://www.figma.com/design/0k1WqYjjHA4BM5RQLZ9xq5/Messenger?node-id=99-1258&t=dXEpxy9eob2E4WRH-0)
+Перейти на страницу figma с макетами можно, нажав **[здесь](https://www.figma.com/design/0k1WqYjjHA4BM5RQLZ9xq5/Messenger?node-id=99-1258&t=dXEpxy9eob2E4WRH-0)**
 
 Полные макеты и скриншоты всех экранов доступны в папке:
 

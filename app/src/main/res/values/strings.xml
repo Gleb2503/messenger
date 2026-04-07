@@ -1,3 +1,23 @@
 <resources>
     <string name="app_name">messenger</string>
+
+    <string name="hint_username">Email или имя пользователя</string>
+    <string name="hint_password">Пароль</string>
+    <string name="btn_login">Войти</string>
+    <string name="btn_register">Создать аккаунт</string>
+    <string name="forgot_password">Забыли пароль?</string>
+    <string name="or">или</string>
+    <string name="error_empty_username">Введите имя пользователя</string>
+    <string name="error_empty_password">Введите пароль</string>
+    <string name="error_invalid_credentials">Неверный логин или пароль</string>
+    <string name="error_network">Ошибка сети. Проверьте подключение</string>
+    <string name="error_unknown">Произошла ошибка. Попробуйте позже</string>
+
+    <string name="loading">Вход...</string>
+    <string name="hint_usernames">Имя пользователя</string>
+    <string name="hint_email">Email</string>
+    <string name="hint_confirm_password">Подтверждение пароля</string>
+    <string name="helper_username">3-50 символов</string>
+    <string name="helper_password">Минимум 6 символов</string>
+    <string name="btn_registers">Зарегистрироваться</string>
 </resources>
