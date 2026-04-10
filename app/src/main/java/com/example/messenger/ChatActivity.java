@@ -286,7 +286,17 @@ public class ChatActivity extends AppCompatActivity {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> status = (Map<String, Object>) payload;
                 Boolean online = (Boolean) status.get("online");
-                Long userId = (Long) status.get("userId");
+                Object userIdObj = status.get("userId");
+                Long userId;
+
+                if (userIdObj instanceof Number) {
+                    userId = ((Number) userIdObj).longValue();
+                } else {
+
+                    userId = null;
+                    Log.w("ChatActivity", "Invalid type for userId: " + userIdObj.getClass());
+                }
+
 
                 if (online != null && userId != null && userId == partnerUserId) {
                     Log.d("ChatActivity", "🟢 Updating partner status: online=" + online);
