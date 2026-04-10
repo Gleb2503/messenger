@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/dateText"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_gravity="center_horizontal"
+    android:layout_marginVertical="12dp"
+    android:text="Сегодня"
+    android:textSize="12sp"
+    android:textColor="#6B7280"
+    android:background="@drawable/bg_date_badge"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="4dp"/>

@@ -9,14 +9,14 @@
     <com.google.android.material.textfield.TextInputLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Название чата"
+        android:hint="Номер телефона (например, +7999...)"
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
         <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/chatNameInput"
+            android:id="@+id/contactInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:inputType="text"
+            android:inputType="phone"
             android:maxLines="1"/>
     </com.google.android.material.textfield.TextInputLayout>
 
@@ -34,6 +34,7 @@
         android:layout_width="match_parent"
         android:layout_height="48dp"
         android:background="@drawable/bg_search_field"
-        android:paddingHorizontal="12dp"/>
+        android:paddingHorizontal="12dp"
+        android:enabled="false"/>
 
 </LinearLayout>

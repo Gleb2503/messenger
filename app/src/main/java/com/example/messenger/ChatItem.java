@@ -13,6 +13,7 @@ public class ChatItem {
     private final String time;
     private final int unreadCount;
     private final boolean isPinned;
+    private final long partnerUserId;
 
     public ChatItem(int type, String title) {
         this.type = type;
@@ -22,10 +23,12 @@ public class ChatItem {
         this.time = "";
         this.unreadCount = 0;
         this.isPinned = false;
+        this.partnerUserId = -1;
     }
 
+
     public ChatItem(long id, String name, String lastMessage, String time,
-                    int unreadCount, boolean isPinned) {
+                    int unreadCount, boolean isPinned, long partnerUserId) {
         this.type = TYPE_CHAT;
         this.id = id;
         this.name = name;
@@ -33,6 +36,11 @@ public class ChatItem {
         this.time = time;
         this.unreadCount = unreadCount;
         this.isPinned = isPinned;
+        this.partnerUserId = partnerUserId;
+    }
+
+    public long getPartnerUserId() {
+        return partnerUserId;
     }
 
     public int getType() { return type; }
@@ -42,6 +50,7 @@ public class ChatItem {
     public String getTime() { return time; }
     public int getUnreadCount() { return unreadCount; }
     public boolean isPinned() { return isPinned; }
+
 
     public boolean isHeader() { return type == TYPE_HEADER_PINNED || type == TYPE_HEADER_ALL; }
     public boolean isPinnedHeader() { return type == TYPE_HEADER_PINNED; }

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+
+
+    android:gravity="end"
+    android:paddingVertical="2dp"
+    android:paddingStart="60dp"
+    android:paddingEnd="16dp">
+
+<LinearLayout
+android:layout_width="wrap_content"
+android:layout_height="wrap_content"
+android:orientation="vertical"
+android:background="@drawable/bg_message_outgoing"
+android:paddingHorizontal="12dp"
+android:paddingTop="8dp"
+android:paddingBottom="4dp"
+android:maxWidth="280dp">
+
+<TextView
+    android:id="@+id/messageText"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="Привет"
+    android:textColor="#FFFFFF"
+    android:textSize="15sp"/>
+
+<LinearLayout
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:layout_gravity="end"
+    android:layout_marginTop="2dp">
+
+    <ImageView
+        android:id="@+id/statusIcon"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:contentDescription="Статус"
+        android:src="@drawable/ic_check_single"
+        app:tint="#FFFFFF"
+        android:layout_gravity="center_vertical"/>
+
+    <TextView
+        android:id="@+id/timeText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="14:30"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:layout_marginStart="4dp"
+        android:layout_gravity="center_vertical"/>
+</LinearLayout>
+</LinearLayout>
+    </LinearLayout>

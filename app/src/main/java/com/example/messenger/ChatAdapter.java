@@ -16,9 +16,14 @@ public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> 
     private static final int VIEW_TYPE_CHAT = 1;
 
     private OnChatClickListener clickListener;
+    private OnChatLongClickListener longClickListener;
 
     public interface OnChatClickListener {
-        void onChatClick(long chatId);
+        void onChatClick(ChatItem chatItem);
+    }
+
+    public interface OnChatLongClickListener {
+        void onChatLongClick(long chatId, String chatName, boolean isPinned);
     }
 
     public ChatAdapter() {
@@ -30,7 +35,7 @@ public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> 
     public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         LayoutInflater inflater = LayoutInflater.from(parent.getContext());
         if (viewType == VIEW_TYPE_HEADER) {
-            View view = inflater.inflate(R.layout.item_header, parent, false);
+            View view = inflater.inflate(R.layout.item_chat_header, parent, false);
             return new HeaderViewHolder(view);
         } else {
             View view = inflater.inflate(R.layout.item_chat, parent, false);
@@ -44,7 +49,7 @@ public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> 
         if (holder instanceof HeaderViewHolder) {
             ((HeaderViewHolder) holder).bind(item);
         } else if (holder instanceof ChatViewHolder) {
-            ((ChatViewHolder) holder).bind(item, clickListener);
+            ((ChatViewHolder) holder).bind(item, clickListener, longClickListener);
         }
     }
 
@@ -56,6 +61,10 @@ public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> 
 
     public void setOnChatClickListener(OnChatClickListener listener) {
         this.clickListener = listener;
+    }
+
+    public void setOnChatLongClickListener(OnChatLongClickListener listener) {
+        this.longClickListener = listener;
     }
 
     static class HeaderViewHolder extends RecyclerView.ViewHolder {
@@ -88,7 +97,7 @@ public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> 
             avatarLetter = itemView.findViewById(R.id.avatarLetter);
         }
 
-        void bind(ChatItem item, OnChatClickListener listener) {
+        void bind(ChatItem item, OnChatClickListener listener, OnChatLongClickListener longListener) {
             nameText.setText(item.getName());
             messageText.setText(item.getLastMessage());
             timeText.setText(item.getTime());
@@ -108,8 +117,16 @@ public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> 
 
             itemView.setOnClickListener(v -> {
                 if (listener != null) {
-                    listener.onChatClick(item.getId());
+                    listener.onChatClick(item);
                 }
+            });
+
+            itemView.setOnLongClickListener(v -> {
+                if (longListener != null) {
+                    longListener.onChatLongClick(item.getId(), item.getName(), item.isPinned());
+                    return true;
+                }
+                return false;
             });
         }
     }
