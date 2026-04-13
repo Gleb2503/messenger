@@ -20,12 +20,12 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import com.google.android.material.textfield.TextInputEditText;
 import com.example.messenger.data.api.ApiService;
 import com.example.messenger.data.api.RetrofitClient;
 import com.example.messenger.data.websocket.StompClient;
 import com.example.messenger.util.Constants;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.textfield.TextInputEditText;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -71,7 +71,9 @@ public class MainActivity extends AppCompatActivity {
         setupClickListeners();
         setupSearch();
         loadChats();
-        if (authToken != null && !authToken.isEmpty()) {
+
+        // 🔥 Инициализируем WebSocket для статусов (как в ChatActivity)
+        if (authToken != null && !authToken.isEmpty() && currentUserId > 0) {
             initWebSocketForStatus(authToken);
         }
     }
@@ -79,42 +81,51 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        broadcastAppStatus(true);
+        // 🔥 Отправляем "онлайн" при возврате в приложение
+        if (stompClient != null && stompClient.isConnected() && currentUserId > 0) {
+            broadcastAppStatus(true);
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        broadcastAppStatus(false);
+        // 🔥 Отправляем "оффлайн" с задержкой (как в ChatActivity)
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (!isAppInForeground() && stompClient != null && stompClient.isConnected()) {
+                broadcastAppStatus(false);
+            }
+        }, 10_000); // 10 секунд задержки
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        handler.removeCallbacksAndMessages(null);
+        // 🔥 Отключаем WebSocket при уничтожении активности
         if (stompClient != null) {
             stompClient.disconnect();
             stompClient = null;
         }
     }
 
+    // 🔥 WebSocket для статусов (аналогично ChatActivity)
     private void initWebSocketForStatus(final String token) {
         if (token == null || token.isEmpty()) return;
 
-        Log.d("MainActivity", "🔌 Initializing WebSocket for app status");
+        Log.d("MainActivity", "🔌 Initializing status WebSocket, userId=" + currentUserId);
 
         stompClient = new StompClient(token);
         stompClient.setListener(new StompClient.StompListener() {
             @Override
             public void onConnected() {
-                Log.d("MainActivity", "✅ WebSocket connected for status");
-
+                Log.d("MainActivity", "✅ Status WebSocket connected");
+                // Автоматически отправляем "онлайн" при подключении
                 broadcastAppStatus(true);
             }
 
             @Override
             public void onDisconnected() {
-                Log.d("MainActivity", "❌ WebSocket disconnected");
+                Log.d("MainActivity", "❌ Status WebSocket disconnected");
             }
 
             @Override public void onMessage(String destination, Object payload) {}
@@ -125,23 +136,31 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        Log.d("MainActivity", "🔌 Connecting to WebSocket...");
+        Log.d("MainActivity", "🔌 Connecting to status WebSocket...");
         stompClient.connect();
     }
 
-
-    private void broadcastAppStatus(boolean isOnline) {
-        if (stompClient == null || !stompClient.isConnected()) {
-            Log.w("MainActivity", "⚠️ Cannot send app status: WebSocket not connected");
+    // 🔥 Отправка статуса приложения (аналогично ChatActivity)
+    private void broadcastAppStatus(boolean online) {
+        if (stompClient == null || !stompClient.isConnected() || currentUserId <= 0) {
+            Log.w("MainActivity", "Cannot broadcast status: connected=" + (stompClient != null && stompClient != null) + ", userId=" + currentUserId);
             return;
         }
 
         Map<String, Object> status = new HashMap<>();
         status.put("userId", currentUserId);
-        status.put("online", isOnline);
+        status.put("online", online);
+        status.put("source", "app");
 
-        Log.d("MainActivity", "📤 Sending app status: userId=" + currentUserId + ", online=" + isOnline);
+        Log.d("MainActivity", "📤 Broadcasting user.status: userId=" + currentUserId + ", online=" + online);
         stompClient.send("/app/user.status", status);
+    }
+
+    // Простая проверка: если активность не на переднем плане
+    private boolean isAppInForeground() {
+        // В реальном приложении лучше использовать ProcessLifecycleOwner
+        // Для простоты возвращаем false — оффлайн отправится после onPause + задержки
+        return false;
     }
 
     private void initViews() {
@@ -274,6 +293,7 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onFailure(Call<List<Map<String, Object>>> call, Throwable t) {
+                Log.e("MainActivity", "Network error loading chats", t);
                 showState(State.ERROR);
             }
         });
@@ -399,7 +419,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void createPrivateChat(String phoneNumber) {
         Map<String, String> request = new HashMap<>();
-
         request.put("participantPhone", phoneNumber);
         request.put("type", "private_chat");
 

@@ -233,7 +233,7 @@ public class StompClient {
             reconnectAttempts++;
             final long delay = Math.min(1000L * (1L << reconnectAttempts), 30000);
             Log.d(TAG, "Reconnecting in " + delay + "ms (attempt " + reconnectAttempts + ")");
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            mainHandler.postDelayed(() -> {
                 if (!isDisconnected) {
                     connect();
                 }
