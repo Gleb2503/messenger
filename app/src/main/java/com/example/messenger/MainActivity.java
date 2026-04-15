@@ -37,7 +37,15 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
+import androidx.lifecycle.ProcessLifecycleOwner;
+import androidx.lifecycle.Lifecycle;
+
 public class MainActivity extends AppCompatActivity {
+
+    private static final String TAG = "MainActivity";
+
+    private static MainActivity instance;
+    private long lastStatusSentTime = 0;
 
     private RecyclerView chatRecyclerView;
     private View emptyState, errorState, progressBar;
@@ -46,21 +54,27 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar searchProgressBar;
     private FloatingActionButton fabAddChat;
 
+    StompClient stompClient;
+
     private ChatAdapter chatAdapter;
     private ApiService apiService;
-    private StompClient stompClient;
     private Handler handler = new Handler(Looper.getMainLooper());
     private List<ChatItem> allChats = new ArrayList<>();
     private long currentUserId;
     private String authToken;
+    private boolean isChatActivityVisible = false;
 
     private static final boolean TEST_EMPTY_STATE = false;
     private static final boolean TEST_ERROR_STATE = false;
+    private static final long STATUS_DEBOUNCE_MS = 2000;
+    private boolean statusSent = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        instance = this;
 
         RetrofitClient.init(this);
         apiService = RetrofitClient.getApiService();
@@ -72,17 +86,19 @@ public class MainActivity extends AppCompatActivity {
         setupSearch();
         loadChats();
 
-        // 🔥 Инициализируем WebSocket для статусов (как в ChatActivity)
         if (authToken != null && !authToken.isEmpty() && currentUserId > 0) {
             initWebSocketForStatus(authToken);
         }
+        statusSent = false;
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // 🔥 Отправляем "онлайн" при возврате в приложение
+        isChatActivityVisible = false;
+
         if (stompClient != null && stompClient.isConnected() && currentUserId > 0) {
+            Log.d(TAG, "📤 onResume: Broadcasting online=true");
             broadcastAppStatus(true);
         }
     }
@@ -90,77 +106,119 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        // 🔥 Отправляем "оффлайн" с задержкой (как в ChatActivity)
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (!isAppInForeground() && stompClient != null && stompClient.isConnected()) {
-                broadcastAppStatus(false);
-            }
-        }, 10_000); // 10 секунд задержки
+
+        if (!isChatActivityVisible && stompClient != null && stompClient.isConnected() && currentUserId > 0) {
+            Log.d(TAG, "📤 onPause: Sending OFFLINE immediately");
+            broadcastAppStatus(false);
+            statusSent = true;
+        }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // 🔥 Отключаем WebSocket при уничтожении активности
+
+        if (instance == this) {
+            instance = null;
+        }
+
+
+        if (stompClient != null && stompClient.isConnected() && currentUserId > 0) {
+            Log.d(TAG, "📤 onDestroy: Broadcasting online=false (final)");
+
+            Map<String, Object> status = new HashMap<>();
+            status.put("userId", currentUserId);
+            status.put("online", false);
+            status.put("source", "main_destroy");
+            stompClient.send("/app/user.status", status);
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+            }
+        }
+
         if (stompClient != null) {
             stompClient.disconnect();
             stompClient = null;
         }
     }
 
-    // 🔥 WebSocket для статусов (аналогично ChatActivity)
+
+
+    public static StompClient getSharedStompClient() {
+        return instance != null ? instance.stompClient : null;
+    }
+
+    public static long getSharedCurrentUserId() {
+        return instance != null ? instance.currentUserId : -1;
+    }
+
+    public StompClient getStompClient() {
+        return stompClient;
+    }
+
+    public long getCurrentUserId() {
+        return currentUserId;
+    }
+
     private void initWebSocketForStatus(final String token) {
         if (token == null || token.isEmpty()) return;
 
-        Log.d("MainActivity", "🔌 Initializing status WebSocket, userId=" + currentUserId);
+        Log.d(TAG, "🔌 Initializing status WebSocket, userId=" + currentUserId);
 
         stompClient = new StompClient(token);
         stompClient.setListener(new StompClient.StompListener() {
             @Override
             public void onConnected() {
-                Log.d("MainActivity", "✅ Status WebSocket connected");
-                // Автоматически отправляем "онлайн" при подключении
+                Log.d(TAG, "✅ Status WebSocket connected");
                 broadcastAppStatus(true);
             }
 
             @Override
             public void onDisconnected() {
-                Log.d("MainActivity", "❌ Status WebSocket disconnected");
+                Log.d(TAG, "❌ Status WebSocket disconnected");
             }
 
             @Override public void onMessage(String destination, Object payload) {}
 
             @Override
             public void onError(String error) {
-                Log.e("MainActivity", "❌ WS Error: " + error);
+                Log.e(TAG, "❌ WS Error: " + error);
             }
         });
 
-        Log.d("MainActivity", "🔌 Connecting to status WebSocket...");
+        Log.d(TAG, "🔌 Connecting to status WebSocket...");
         stompClient.connect();
     }
 
-    // 🔥 Отправка статуса приложения (аналогично ChatActivity)
     private void broadcastAppStatus(boolean online) {
         if (stompClient == null || !stompClient.isConnected() || currentUserId <= 0) {
-            Log.w("MainActivity", "Cannot broadcast status: connected=" + (stompClient != null && stompClient != null) + ", userId=" + currentUserId);
+            Log.w(TAG, "Cannot broadcast status: connected=" + (stompClient != null) + ", userId=" + currentUserId);
             return;
         }
+
+        long now = System.currentTimeMillis();
+        if (now - lastStatusSentTime < STATUS_DEBOUNCE_MS) {
+            Log.d(TAG, "⏱️ Status send debounced (online=" + online + ")");
+            return;
+        }
+        lastStatusSentTime = now;
 
         Map<String, Object> status = new HashMap<>();
         status.put("userId", currentUserId);
         status.put("online", online);
         status.put("source", "app");
 
-        Log.d("MainActivity", "📤 Broadcasting user.status: userId=" + currentUserId + ", online=" + online);
+        Log.d(TAG, "📤 Broadcasting user.status: userId=" + currentUserId + ", online=" + online);
         stompClient.send("/app/user.status", status);
     }
-
-    // Простая проверка: если активность не на переднем плане
     private boolean isAppInForeground() {
-        // В реальном приложении лучше использовать ProcessLifecycleOwner
-        // Для простоты возвращаем false — оффлайн отправится после onPause + задержки
-        return false;
+        try {
+            return ProcessLifecycleOwner.get().getLifecycle().getCurrentState().isAtLeast(Lifecycle.State.STARTED);
+        } catch (Exception e) {
+
+            return false;
+        }
     }
 
     private void initViews() {
@@ -293,7 +351,7 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onFailure(Call<List<Map<String, Object>>> call, Throwable t) {
-                Log.e("MainActivity", "Network error loading chats", t);
+                Log.e(TAG, "Network error loading chats", t);
                 showState(State.ERROR);
             }
         });
@@ -467,11 +525,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void openChatActivity(long chatId, String chatName, long partnerUserId) {
+        isChatActivityVisible = true;
         Intent intent = new Intent(this, ChatActivity.class);
         intent.putExtra("chat_id", chatId);
         intent.putExtra("chat_name", chatName);
         intent.putExtra("partner_user_id", partnerUserId);
-        Log.d("MainActivity", "Opening chat: id=" + chatId + ", partnerUserId=" + partnerUserId);
         startActivity(intent);
     }
 

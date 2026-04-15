@@ -6,7 +6,9 @@ import android.util.Log;
 import com.google.gson.Gson;
 import okhttp3.*;
 
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,9 +48,11 @@ public class StompClient {
     public StompClient(String token) {
         this.token = token;
         this.httpClient = new OkHttpClient.Builder()
-                .pingInterval(30, TimeUnit.SECONDS)
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
+                .pingInterval(60, TimeUnit.SECONDS)
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
                 .build();
     }
 
@@ -286,7 +290,15 @@ public class StompClient {
 
     private void resubscribeAll() {
         Log.d(TAG, "Resubscribing to " + subscriptions.size() + " destinations");
-        for (Map.Entry<String, StompSubscription> entry : new java.util.HashMap<>(subscriptions).entrySet()) {
+
+
+        List<Map.Entry<String, StompSubscription>> entries =
+                new ArrayList<>(subscriptions.entrySet());
+
+
+        subscriptions.clear();
+
+        for (Map.Entry<String, StompSubscription> entry : entries) {
             Log.d(TAG, "Resubscribing to: " + entry.getKey());
             subscribe(entry.getKey(), entry.getValue());
         }
