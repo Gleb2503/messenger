@@ -710,7 +710,7 @@ public class ChatActivity extends AppCompatActivity {
     }
 
     private void showChatMenu() {
-        String[] items = {"Информация о чате", "Очистить историю", "Выйти"};
+        String[] items = {"Очистить историю", "Выйти"};
         new AlertDialog.Builder(this)
                 .setTitle(chatNameStr)
                 .setItems(items, (dialog, which) -> {

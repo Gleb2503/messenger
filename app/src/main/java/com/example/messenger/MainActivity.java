@@ -597,7 +597,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showMenuDialog() {
-        String[] items = {"Настройки", "Профиль", "О приложении", "Выйти"};
+        String[] items = {"Настройки", "Профиль", "Выйти"};
         new AlertDialog.Builder(this)
                 .setTitle("Меню")
                 .setItems(items, (dialog, which) -> {
