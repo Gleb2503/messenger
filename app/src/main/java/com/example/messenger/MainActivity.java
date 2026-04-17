@@ -45,7 +45,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
 
     private static MainActivity instance;
-    private long lastStatusSentTime = 0;
+
 
     private RecyclerView chatRecyclerView;
     private View emptyState, errorState, progressBar;
@@ -54,7 +54,6 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar searchProgressBar;
     private FloatingActionButton fabAddChat;
 
-    StompClient stompClient;
 
     private ChatAdapter chatAdapter;
     private ApiService apiService;
@@ -62,12 +61,13 @@ public class MainActivity extends AppCompatActivity {
     private List<ChatItem> allChats = new ArrayList<>();
     private long currentUserId;
     private String authToken;
-    private boolean isChatActivityVisible = false;
+
 
     private static final boolean TEST_EMPTY_STATE = false;
     private static final boolean TEST_ERROR_STATE = false;
-    private static final long STATUS_DEBOUNCE_MS = 2000;
-    private boolean statusSent = false;
+
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -85,141 +85,38 @@ public class MainActivity extends AppCompatActivity {
         setupClickListeners();
         setupSearch();
         loadChats();
-
-        if (authToken != null && !authToken.isEmpty() && currentUserId > 0) {
-            initWebSocketForStatus(authToken);
-        }
-        statusSent = false;
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        isChatActivityVisible = false;
 
-        if (stompClient != null && stompClient.isConnected() && currentUserId > 0) {
-            Log.d(TAG, "📤 onResume: Broadcasting online=true");
-            broadcastAppStatus(true);
-        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
 
-        if (!isChatActivityVisible && stompClient != null && stompClient.isConnected() && currentUserId > 0) {
-            Log.d(TAG, "📤 onPause: Sending OFFLINE immediately");
-            broadcastAppStatus(false);
-            statusSent = true;
-        }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-
-        if (instance == this) {
-            instance = null;
-        }
-
-
-        if (stompClient != null && stompClient.isConnected() && currentUserId > 0) {
-            Log.d(TAG, "📤 onDestroy: Broadcasting online=false (final)");
-
-            Map<String, Object> status = new HashMap<>();
-            status.put("userId", currentUserId);
-            status.put("online", false);
-            status.put("source", "main_destroy");
-            stompClient.send("/app/user.status", status);
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-            }
-        }
-
-        if (stompClient != null) {
-            stompClient.disconnect();
-            stompClient = null;
-        }
+        if (instance == this) instance = null;
     }
 
 
 
-    public static StompClient getSharedStompClient() {
-        return instance != null ? instance.stompClient : null;
-    }
+
 
     public static long getSharedCurrentUserId() {
         return instance != null ? instance.currentUserId : -1;
     }
 
-    public StompClient getStompClient() {
-        return stompClient;
-    }
 
-    public long getCurrentUserId() {
-        return currentUserId;
-    }
 
-    private void initWebSocketForStatus(final String token) {
-        if (token == null || token.isEmpty()) return;
 
-        Log.d(TAG, "🔌 Initializing status WebSocket, userId=" + currentUserId);
 
-        stompClient = new StompClient(token);
-        stompClient.setListener(new StompClient.StompListener() {
-            @Override
-            public void onConnected() {
-                Log.d(TAG, "✅ Status WebSocket connected");
-                broadcastAppStatus(true);
-            }
-
-            @Override
-            public void onDisconnected() {
-                Log.d(TAG, "❌ Status WebSocket disconnected");
-            }
-
-            @Override public void onMessage(String destination, Object payload) {}
-
-            @Override
-            public void onError(String error) {
-                Log.e(TAG, "❌ WS Error: " + error);
-            }
-        });
-
-        Log.d(TAG, "🔌 Connecting to status WebSocket...");
-        stompClient.connect();
-    }
-
-    private void broadcastAppStatus(boolean online) {
-        if (stompClient == null || !stompClient.isConnected() || currentUserId <= 0) {
-            Log.w(TAG, "Cannot broadcast status: connected=" + (stompClient != null) + ", userId=" + currentUserId);
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-        if (now - lastStatusSentTime < STATUS_DEBOUNCE_MS) {
-            Log.d(TAG, "⏱️ Status send debounced (online=" + online + ")");
-            return;
-        }
-        lastStatusSentTime = now;
-
-        Map<String, Object> status = new HashMap<>();
-        status.put("userId", currentUserId);
-        status.put("online", online);
-        status.put("source", "app");
-
-        Log.d(TAG, "📤 Broadcasting user.status: userId=" + currentUserId + ", online=" + online);
-        stompClient.send("/app/user.status", status);
-    }
-    private boolean isAppInForeground() {
-        try {
-            return ProcessLifecycleOwner.get().getLifecycle().getCurrentState().isAtLeast(Lifecycle.State.STARTED);
-        } catch (Exception e) {
-
-            return false;
-        }
-    }
 
     private void initViews() {
         chatRecyclerView = findViewById(R.id.chatRecyclerView);
@@ -525,7 +422,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void openChatActivity(long chatId, String chatName, long partnerUserId) {
-        isChatActivityVisible = true;
         Intent intent = new Intent(this, ChatActivity.class);
         intent.putExtra("chat_id", chatId);
         intent.putExtra("chat_name", chatName);

@@ -101,14 +101,20 @@ public class LoginActivity extends AppCompatActivity {
         LoginRequest request = new LoginRequest(normalizedPhone, password);
 
         apiService.login(request).enqueue(new Callback<LoginResponse>() {
+
             @Override
             public void onResponse(Call<LoginResponse> call, Response<LoginResponse> response) {
                 setLoading(false);
                 if (response.isSuccessful() && response.body() != null) {
                     saveUserData(response.body());
+
+
+                    UserStatusManager statusManager =
+                            ((MessengerApplication) getApplication()).getStatusManager();
+                    statusManager.updateUserId(response.body().getUserId());
+
                     navigateToMain();
                 } else {
-                    // Обработка ошибок сервера
                     if (response.code() == 401 || response.code() == 404) {
                         showError(passwordInput, passwordErrorText, "Неверный номер или пароль");
                     } else {

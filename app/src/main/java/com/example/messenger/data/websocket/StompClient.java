@@ -267,10 +267,10 @@ public class StompClient {
         return isConnected && webSocket != null;
     }
 
-    public void subscribe(final String destination, final StompSubscription callback) {
+    public String subscribe(final String destination, final StompSubscription callback) {
         if (!isConnected) {
             Log.w(TAG, "Not connected, cannot subscribe to " + destination);
-            return;
+            return null;
         }
 
         final String id = UUID.randomUUID().toString().substring(0, 8);
@@ -284,13 +284,27 @@ public class StompClient {
         Log.d(TAG, "Subscribing to: " + destination + " with id: " + id);
         if (webSocket != null) {
             webSocket.send(frame.toString());
+
             subscriptions.put(destination, callback);
+
+            return id;
+        }
+        return null;
+    }
+    public void unsubscribe(String destination, String subscriptionId) {
+        if (webSocket != null && subscriptions.containsKey(destination)) {
+            String frame = "UNSUBSCRIBE\nid:" + subscriptionId + "\n\n\u0000";
+            webSocket.send(frame);
+            subscriptions.remove(destination);
+            Log.d(TAG, "🔇 Unsubscribed from " + destination + " (id: " + subscriptionId + ")");
+        } else {
+            Log.w(TAG, "⚠️ Cannot unsubscribe: destination=" + destination);
         }
     }
 
+
     private void resubscribeAll() {
         Log.d(TAG, "Resubscribing to " + subscriptions.size() + " destinations");
-
 
         List<Map.Entry<String, StompSubscription>> entries =
                 new ArrayList<>(subscriptions.entrySet());
@@ -299,8 +313,10 @@ public class StompClient {
         subscriptions.clear();
 
         for (Map.Entry<String, StompSubscription> entry : entries) {
-            Log.d(TAG, "Resubscribing to: " + entry.getKey());
-            subscribe(entry.getKey(), entry.getValue());
+            String destination = entry.getKey();
+            StompSubscription callback = entry.getValue();
+            Log.d(TAG, "Resubscribing to: " + destination);
+            subscribe(destination, callback);
         }
     }
 
