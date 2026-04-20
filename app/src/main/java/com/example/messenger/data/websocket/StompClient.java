@@ -273,6 +273,11 @@ public class StompClient {
             return null;
         }
 
+        if (subscriptions.containsKey(destination)) {
+            Log.d(TAG, "✅ Already subscribed to " + destination + ", skipping duplicate");
+            return null;
+        }
+
         final String id = UUID.randomUUID().toString().substring(0, 8);
         StringBuilder frame = new StringBuilder();
         frame.append("SUBSCRIBE\n");
@@ -284,9 +289,7 @@ public class StompClient {
         Log.d(TAG, "Subscribing to: " + destination + " with id: " + id);
         if (webSocket != null) {
             webSocket.send(frame.toString());
-
             subscriptions.put(destination, callback);
-
             return id;
         }
         return null;

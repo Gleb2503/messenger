@@ -33,9 +33,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import androidx.lifecycle.ProcessLifecycleOwner;
-import androidx.lifecycle.Lifecycle;
-
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -44,6 +41,8 @@ public class ChatActivity extends AppCompatActivity {
 
     private static final String TAG = "ChatActivity";
     private final Map<String, String> statusSubscriptions = new HashMap<>();
+    private boolean chatTopicSubscribed = false;
+    private String chatTopicSubscriptionId = null;
 
     private RecyclerView messagesRecyclerView;
     private LinearLayout emptyState, noConnectionState;
@@ -57,16 +56,12 @@ public class ChatActivity extends AppCompatActivity {
     private StompClient stompClient;
     private boolean partnerStatusSubscribed = false;
 
-
-
-
-
     private long chatId;
     private long partnerUserId;
     private String chatNameStr;
-    private long currentUserId;
     private String authToken;
 
+    private UserStatusManager.OnWebSocketReadyListener readyListener;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -81,7 +76,7 @@ public class ChatActivity extends AppCompatActivity {
         chatNameStr = getIntent().getStringExtra("chat_name");
         if (chatNameStr == null) chatNameStr = "Чат";
 
-        currentUserId = RetrofitClient.getUserId();
+        long currentUserId = getCurrentUserId();
         Log.d(TAG, "🔐 currentUserId initialized: " + currentUserId);
 
         authToken = RetrofitClient.getToken();
@@ -106,16 +101,37 @@ public class ChatActivity extends AppCompatActivity {
         if (sharedClient != null && sharedClient.isConnected()) {
             Log.d(TAG, "🔗 Using shared StompClient from UserStatusManager");
             this.stompClient = sharedClient;
-            this.currentUserId = statusManager.getCurrentUserId();
+            long managerUserId = statusManager.getCurrentUserId();
 
-            subscribeToChatTopics();
+            subscribeToChatTopics(managerUserId);
 
             if (partnerUserId > 0 && !partnerStatusSubscribed) {
-                subscribeToPartnerStatus();
+                subscribeToPartnerStatus(managerUserId);
                 partnerStatusSubscribed = true;
             }
         } else {
             Log.d(TAG, "⚠️ WebSocket not connected yet, will subscribe when ready");
+
+
+            readyListener = () -> {
+                if (!isFinishing() && !isDestroyed()) {
+                    UserStatusManager sm = ((MessengerApplication) getApplication()).getStatusManager();
+                    this.stompClient = sm.getStompClient();
+                    long userId = sm.getCurrentUserId();
+
+                    subscribeToChatTopics(userId);
+
+                    if (partnerUserId > 0 && !partnerStatusSubscribed) {
+                        subscribeToPartnerStatus(userId);
+                        partnerStatusSubscribed = true;
+                    }
+                }
+            };
+            statusManager.addOnReadyListener(readyListener);
+
+            if (authToken != null && !authToken.isEmpty()) {
+                statusManager.initWebSocket(authToken);
+            }
         }
 
         loadMessages();
@@ -124,7 +140,6 @@ public class ChatActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-
         markAllMessagesAsRead();
     }
 
@@ -137,7 +152,23 @@ public class ChatActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
 
+        if (readyListener != null) {
+            UserStatusManager sm = ((MessengerApplication) getApplication()).getStatusManager();
+            if (sm != null) {
+                sm.removeOnReadyListener(readyListener);
+            }
+            readyListener = null;
+        }
+
         if (stompClient != null && stompClient.isConnected()) {
+            if (chatTopicSubscribed && chatId > 0) {
+                String chatTopic = "/topic/chat/" + chatId;
+                stompClient.unsubscribe(chatTopic, chatTopicSubscriptionId);
+                Log.d(TAG, "🔇 Unsubscribed from " + chatTopic);
+                chatTopicSubscribed = false;
+                chatTopicSubscriptionId = null;
+            }
+
             for (Map.Entry<String, String> entry : statusSubscriptions.entrySet()) {
                 String destination = entry.getKey();
                 String subscriptionId = entry.getValue();
@@ -146,6 +177,7 @@ public class ChatActivity extends AppCompatActivity {
             }
             statusSubscriptions.clear();
         }
+
         stompClient = null;
     }
 
@@ -163,7 +195,7 @@ public class ChatActivity extends AppCompatActivity {
         retryButton = findViewById(R.id.retryButton);
 
         chatName.setText(chatNameStr);
-        updatePartnerStatus(false); // Дефолтное значение до получения реального статуса
+        updatePartnerStatus(false);
 
         messageAdapter = new MessageAdapter();
         messagesRecyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -213,40 +245,55 @@ public class ChatActivity extends AppCompatActivity {
             Log.d(TAG, "✅ UI Updated");
         });
     }
-    private void subscribeToChatTopics() {
+
+    private void subscribeToChatTopics(long currentUserId) {
         if (stompClient == null || !stompClient.isConnected()) {
             Log.w(TAG, "⚠️ Cannot subscribe: WebSocket not connected");
             return;
         }
 
-        if (chatId > 0) {
-            stompClient.subscribeToChat(String.valueOf(chatId), payload -> {
+        if (chatId > 0 && !chatTopicSubscribed) {
+            String chatTopic = "/topic/chat/" + chatId;
+
+            String subId = stompClient.subscribe(chatTopic, payload -> {
+                if (isFinishing() || isDestroyed()) {
+                    Log.w(TAG, "⚠️ Activity destroyed, skipping message");
+                    return;
+                }
+
                 Log.d(TAG, "📨 MESSAGE RECEIVED from WS!");
                 if (payload instanceof Map) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> msg = (Map<String, Object>) payload;
-                    onNewMessageReceived(msg);
+                    onNewMessageReceived(msg, currentUserId);
                 }
             });
-            Log.d(TAG, "📡 Subscribed to /topic/chat/" + chatId);
+
+            if (subId != null) {
+                chatTopicSubscribed = true;
+                chatTopicSubscriptionId = subId;
+                Log.d(TAG, "📡 Subscribed to " + chatTopic + " (id: " + subId + ")");
+            }
+        } else if (chatId > 0) {
+            Log.d(TAG, "✅ Already subscribed to /topic/chat/" + chatId + ", skipping");
         }
+
         if (currentUserId > 0) {
             String personalQueue = "/user/" + currentUserId + "/queue/user.status";
 
             stompClient.subscribe(personalQueue, payload -> {
-                Log.d(TAG, "📥 PERSONAL QUEUE response: " + payload);
+                if (isFinishing() || isDestroyed()) return;
 
+                Log.d(TAG, "📥 PERSONAL QUEUE response: " + payload);
                 if (payload instanceof Map) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> response = (Map<String, Object>) payload;
-
                     Object userIdObj = response.get("userId");
                     Object onlineObj = response.get("online");
 
                     if (userIdObj instanceof Number && onlineObj instanceof Boolean) {
                         Long targetUserId = ((Number) userIdObj).longValue();
                         Boolean isOnline = (Boolean) onlineObj;
-
                         Log.d(TAG, "🎯 Personal response: user=" + targetUserId + ", online=" + isOnline);
 
                         if (targetUserId == partnerUserId) {
@@ -258,7 +305,10 @@ public class ChatActivity extends AppCompatActivity {
             });
             Log.d(TAG, "📡 Subscribed to personal queue: " + personalQueue);
         }
+
         stompClient.subscribe("/topic/message/status", payload -> {
+            if (isFinishing() || isDestroyed()) return;
+
             Log.d(TAG, "📨 Message status update received: " + payload);
             if (payload instanceof Map) {
                 @SuppressWarnings("unchecked")
@@ -282,7 +332,7 @@ public class ChatActivity extends AppCompatActivity {
         Log.d(TAG, "📡 Subscribed to /topic/message/status");
 
         if (partnerUserId > 0 && !partnerStatusSubscribed) {
-            subscribeToPartnerStatus();
+            subscribeToPartnerStatus(currentUserId);
             partnerStatusSubscribed = true;
         }
 
@@ -291,9 +341,7 @@ public class ChatActivity extends AppCompatActivity {
         }
     }
 
-
-
-    private void subscribeToPartnerStatus() {
+    private void subscribeToPartnerStatus(long currentUserId) {
         if (partnerUserId <= 0) {
             Log.w(TAG, "⚠️ Cannot subscribe: invalid partnerUserId=" + partnerUserId);
             return;
@@ -332,7 +380,6 @@ public class ChatActivity extends AppCompatActivity {
             statusSubscriptions.put(destination, subscriptionId);
             Log.d(TAG, "📡 Subscribed to " + destination + " with id: " + subscriptionId);
 
-
             Map<String, Object> request = new HashMap<>();
             request.put("userId", partnerUserId);
             request.put("requesterId", currentUserId);
@@ -348,10 +395,9 @@ public class ChatActivity extends AppCompatActivity {
                 partnerUserId = item.getSenderId();
                 Log.d(TAG, "🔍 Extracted partnerUserId=" + partnerUserId + " from history");
 
-
                 if (stompClient != null && stompClient.isConnected()) {
                     Log.d(TAG, "📡 Calling subscribeToPartnerStatus() after extraction");
-                    subscribeToPartnerStatus();
+                    subscribeToPartnerStatus(getCurrentUserId());
                     partnerStatusSubscribed = true;
                 } else {
                     Log.w(TAG, "⚠️ WebSocket not connected yet, will subscribe later");
@@ -361,10 +407,20 @@ public class ChatActivity extends AppCompatActivity {
         }
     }
 
-    private void onNewMessageReceived(final Map<String, Object> msg) {
+    private void onNewMessageReceived(final Map<String, Object> msg, long currentUserId) {
         if (msg == null) return;
 
+        if (isFinishing() || isDestroyed()) {
+            Log.w(TAG, "⚠️ Activity is finishing/destroyed, skipping message update");
+            return;
+        }
+
         runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) {
+                Log.w(TAG, "⚠️ Activity destroyed during UI update, skipping");
+                return;
+            }
+
             try {
                 Object idObj = msg.get("id");
                 long realId = idObj != null && idObj instanceof Number ? ((Number) idObj).longValue() : System.currentTimeMillis();
@@ -409,7 +465,7 @@ public class ChatActivity extends AppCompatActivity {
                 if (partnerUserId <= 0 && senderId != currentUserId && !partnerStatusSubscribed) {
                     partnerUserId = senderId;
                     if (stompClient != null && stompClient.isConnected()) {
-                        subscribeToPartnerStatus();
+                        subscribeToPartnerStatus(currentUserId);
                         partnerStatusSubscribed = true;
                     }
                 }
@@ -455,7 +511,7 @@ public class ChatActivity extends AppCompatActivity {
 
         Map<String, Object> readRequest = new HashMap<>();
         readRequest.put("messageId", messageId);
-        readRequest.put("userId", currentUserId);
+        readRequest.put("userId", getCurrentUserId());
         readRequest.put("chatId", chatId);
 
         Log.d(TAG, "📤 Sending message.read: messageId=" + messageId + ", chatId=" + chatId);
@@ -500,6 +556,7 @@ public class ChatActivity extends AppCompatActivity {
         List<MessageItem> items = new ArrayList<>();
         String lastDateHeader = null;
         LocalDate today = LocalDate.now();
+        long currentUserId = getCurrentUserId();
 
         for (Map<String, Object> msg : backendMessages) {
             Object idObj = msg.get("id");
@@ -569,6 +626,10 @@ public class ChatActivity extends AppCompatActivity {
         return new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date());
     }
 
+    private long getCurrentUserId() {
+        return RetrofitClient.getUserId();
+    }
+
     private void sendMessage() {
         String text = messageInput.getText().toString().trim();
         if (text.isEmpty()) {
@@ -578,6 +639,8 @@ public class ChatActivity extends AppCompatActivity {
 
         messageInput.setText("");
         showNoConnection(false);
+
+        long currentUserId = getCurrentUserId();
 
         long tempId = System.currentTimeMillis();
         MessageItem tempMsg = new MessageItem(
@@ -606,7 +669,6 @@ public class ChatActivity extends AppCompatActivity {
     private void sendViaRest(String text) {
         Map<String, Object> request = new HashMap<>();
         request.put("chatId", chatId);
-        request.put("senderId", currentUserId);
         request.put("content", text);
 
         apiService.sendMessage(chatId, request).enqueue(new Callback<Map<String, Object>>() {
@@ -625,7 +687,6 @@ public class ChatActivity extends AppCompatActivity {
         });
     }
 
-
     private void showNoConnection(boolean show) {
         noConnectionState.setVisibility(show ? View.VISIBLE : View.GONE);
     }
@@ -635,7 +696,7 @@ public class ChatActivity extends AppCompatActivity {
         new AlertDialog.Builder(this)
                 .setTitle(chatNameStr)
                 .setItems(items, (dialog, which) -> {
-                    if (which == 2) finish();
+                    if (which == 1) finish();
                     else Toast.makeText(this, items[which], Toast.LENGTH_SHORT).show();
                 })
                 .show();

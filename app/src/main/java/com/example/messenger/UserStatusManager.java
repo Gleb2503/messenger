@@ -24,9 +24,7 @@ public class UserStatusManager {
 
     private boolean isAppInBackground = false;
 
-
     private final Handler backgroundHandler = new Handler(Looper.getMainLooper());
-
     private Runnable pendingBackgroundTask = null;
 
     private ScheduledExecutorService heartbeatScheduler;
@@ -34,9 +32,19 @@ public class UserStatusManager {
     private long lastStatusSentTime = 0;
     private static final long STATUS_DEBOUNCE_MS = 2000;
 
+    public interface OnWebSocketReadyListener {
+        void onReady();
+    }
+    private final java.util.List<OnWebSocketReadyListener> readyListeners = new java.util.ArrayList<>();
+
     private UserStatusManager(Context context) {
         this.context = context.getApplicationContext();
-        this.currentUserId = RetrofitClient.getUserId();
+        refreshUserId();
+        Log.d(TAG, "🔐 UserStatusManager created with userId=" + currentUserId);
+    }
+
+    public static synchronized UserStatusManager getInstanceIfExists() {
+        return instance;
     }
 
     public static synchronized UserStatusManager getInstance(Context context) {
@@ -46,7 +54,29 @@ public class UserStatusManager {
         return instance;
     }
 
+    public void refreshUserId() {
+        long savedUserId = RetrofitClient.getUserId();
+        if (savedUserId > 0 && savedUserId != this.currentUserId) {
+            Log.d(TAG, "🔄 Refreshed userId: " + this.currentUserId + " → " + savedUserId);
+            this.currentUserId = savedUserId;
+        }
+    }
+
+    public void addOnReadyListener(OnWebSocketReadyListener listener) {
+        if (stompClient != null && stompClient.isConnected()) {
+            listener.onReady();
+        } else {
+            readyListeners.add(listener);
+        }
+    }
+
+    public void removeOnReadyListener(OnWebSocketReadyListener listener) {
+        readyListeners.remove(listener);
+    }
+
     public void initWebSocket(String token) {
+        refreshUserId();
+
         if (token == null || token.isEmpty() || currentUserId <= 0) {
             Log.w(TAG, "Cannot init WebSocket: token=" + (token != null) + ", userId=" + currentUserId);
             return;
@@ -54,11 +84,22 @@ public class UserStatusManager {
 
         Log.d(TAG, "🔌 Initializing UserStatusManager WebSocket, userId=" + currentUserId);
 
+        if (stompClient != null && stompClient.isConnected()) {
+            Log.d(TAG, "🔄 Closing existing WebSocket before reconnect");
+            stompClient.disconnect();
+        }
+
         stompClient = new StompClient(token);
         stompClient.setListener(new StompClient.StompListener() {
             @Override
             public void onConnected() {
                 Log.d(TAG, "✅ Status WebSocket connected");
+
+                for (OnWebSocketReadyListener listener : new java.util.ArrayList<>(readyListeners)) {
+                    listener.onReady();
+                }
+                readyListeners.clear();
+
                 broadcastStatus(true);
             }
 
@@ -78,8 +119,9 @@ public class UserStatusManager {
         stompClient.connect();
     }
 
-
     public void broadcastStatus(boolean online) {
+        refreshUserId();
+
         if (currentUserId <= 0) {
             Log.w(TAG, "Cannot broadcast: userId=" + currentUserId + " (not logged in yet)");
             return;
@@ -92,9 +134,7 @@ public class UserStatusManager {
 
         long now = System.currentTimeMillis();
 
-
         if (now - lastStatusSentTime < STATUS_DEBOUNCE_MS) {
-
             if (lastSentStatus == online) {
                 Log.d(TAG, "⏱️ Status send debounced (duplicate): online=" + online);
                 return;
@@ -118,18 +158,26 @@ public class UserStatusManager {
         isAppInBackground = true;
         Log.d(TAG, "📦 App entered background");
 
+        if (RetrofitClient.getToken() == null || RetrofitClient.getUserId() <= 0) {
+            Log.d(TAG, "⚠️ Not logged in, skipping status broadcast");
+            return;
+        }
+
         if (stompClient != null && stompClient.isConnected()) {
             broadcastStatus(false);
-        } else {
-            Log.w(TAG, "⚠️ WebSocket disconnected during background. Server will handle offline via timeout.");
         }
     }
-
-
 
     public void onAppForeground() {
         isAppInBackground = false;
         Log.d(TAG, "🟢 App entered foreground");
+
+        refreshUserId();
+
+        if (currentUserId <= 0) {
+            Log.w(TAG, "⚠️ Cannot broadcast: userId not set yet");
+            return;
+        }
 
         broadcastStatus(true);
     }
@@ -138,7 +186,12 @@ public class UserStatusManager {
         return stompClient;
     }
 
+    public boolean isConnected() {
+        return stompClient != null && stompClient.isConnected();
+    }
+
     public long getCurrentUserId() {
+        refreshUserId();
         return currentUserId;
     }
 
@@ -146,7 +199,32 @@ public class UserStatusManager {
         return isAppInBackground;
     }
 
+    public void logout() {
+        Log.d(TAG, "🚪 User logging out, sending offline status...");
+
+        if (stompClient != null && stompClient.isConnected() && currentUserId > 0) {
+            Map<String, Object> status = new HashMap<>();
+            status.put("userId", currentUserId);
+            status.put("online", false);
+            status.put("source", "logout");
+
+            Log.d(TAG, "📤 Sending offline status on logout: userId=" + currentUserId);
+            stompClient.send("/app/user.status", status);
+
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Log.w(TAG, "⚠️ Interrupted while waiting for status send");
+            }
+        }
+
+
+        cleanup();
+    }
+
     public void cleanup() {
+        Log.d(TAG, "🧹 Cleaning up UserStatusManager");
+
         if (pendingBackgroundTask != null) {
             backgroundHandler.removeCallbacks(pendingBackgroundTask);
             pendingBackgroundTask = null;
@@ -155,8 +233,16 @@ public class UserStatusManager {
         if (stompClient != null) {
             stompClient.disconnect();
             stompClient = null;
+            Log.d(TAG, "🔌 WebSocket disconnected");
         }
+
+        readyListeners.clear();
+
+        this.currentUserId = -1;
+        Log.d(TAG, "🔄 Reset currentUserId to: -1");
+
         instance = null;
+        Log.d(TAG, "✅ UserStatusManager cleaned up");
     }
 
     public void updateUserId(long userId) {

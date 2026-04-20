@@ -1,5 +1,6 @@
 package com.example.messenger;
 
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -11,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageViewHolder> {
-
 
     public static final int TYPE_INCOMING = 1;
     public static final int TYPE_OUTGOING = 2;
@@ -41,6 +41,25 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
         } else {
             view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_message_incoming, parent, false);
             return new IncomingMessageViewHolder(view);
+        }
+    }
+
+
+    @Override
+    public void onBindViewHolder(@NonNull MessageViewHolder holder, int position, @NonNull List<Object> payloads) {
+        if (payloads.isEmpty()) {
+
+            onBindViewHolder(holder, position);
+        } else {
+
+            MessageItem item = items.get(position);
+            if (holder instanceof OutgoingMessageViewHolder && payloads.contains("status_update")) {
+                Log.e("MessageAdapter", "🔄 Payload update: updating status icon for position " + position);
+                ((OutgoingMessageViewHolder) holder).updateStatusIconDirectly(item.getStatus());
+            } else {
+
+                onBindViewHolder(holder, position);
+            }
         }
     }
 
@@ -83,15 +102,26 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
         return new ArrayList<>(items);
     }
 
+
     public boolean updateItemStatus(long messageId, int newStatus) {
         for (int i = 0; i < items.size(); i++) {
             MessageItem item = items.get(i);
-            if (item.getId() == messageId && item.getType() != TYPE_DATE && item.getType() != TYPE_HEADER) {
+
+            if (item.getType() != TYPE_DATE &&
+                    item.getType() != TYPE_HEADER &&
+                    item.getId() == messageId) {
+
+                Log.e("MessageAdapter", "✅ FOUND message " + messageId + ", old status=" + item.getStatus() + ", new=" + newStatus);
+
                 item.setStatus(newStatus);
-                notifyItemChanged(i);
+
+                notifyItemChanged(i, "status_update");
+                Log.e("MessageAdapter", "✓✓ notifyItemChanged(" + i + ", \"status_update\") called");
                 return true;
             }
         }
+
+        Log.e("MessageAdapter", "❌ Message " + messageId + " NOT found!");
         return false;
     }
 
@@ -130,21 +160,34 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
             updateStatusIcon(statusIcon, item.getStatus());
         }
 
+        void updateStatusIconDirectly(int status) {
+            Log.e("MessageAdapter", "🎨 updateStatusIconDirectly: status=" + status);
+            updateStatusIcon(statusIcon, status);
+        }
+
         private void updateStatusIcon(ImageView icon, int status) {
+            if (icon == null) {
+                Log.e("MessageAdapter", "❌ statusIcon is NULL!");
+                return;
+            }
+
             int color = 0xFFFFFFFF;
             switch (status) {
                 case STATUS_SENT:
+                    Log.e("MessageAdapter", "🎨 Setting SINGLE checkmark");
                     icon.setImageResource(R.drawable.ic_check_single);
                     icon.setColorFilter(color);
                     icon.setVisibility(View.VISIBLE);
                     break;
                 case STATUS_DELIVERED:
                 case STATUS_READ:
+                    Log.e("MessageAdapter", "🎨 Setting DOUBLE checkmark for status: " + status);
                     icon.setImageResource(R.drawable.ic_check_double);
                     icon.setColorFilter(color);
                     icon.setVisibility(View.VISIBLE);
                     break;
                 case STATUS_FAILED:
+                    Log.e("MessageAdapter", "🎨 Setting ERROR icon");
                     icon.setImageResource(R.drawable.ic_error);
                     icon.setColorFilter(0xFFFF5252);
                     icon.setVisibility(View.VISIBLE);
@@ -153,6 +196,9 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
                     icon.setVisibility(View.GONE);
                     break;
             }
+
+            icon.invalidate();
+            icon.requestLayout();
         }
     }
 

@@ -1,9 +1,11 @@
 package com.example.messenger;
 
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.InputType;
+import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -12,15 +14,17 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.example.messenger.data.api.ApiService;
-import com.example.messenger.data.api.login.LoginResponse;
-import com.example.messenger.data.api.login.LoginRequest;
 import com.example.messenger.data.api.RetrofitClient;
+import com.example.messenger.data.api.login.LoginRequest;
+import com.example.messenger.data.api.login.LoginResponse;
 import com.example.messenger.util.Constants;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
 public class LoginActivity extends AppCompatActivity {
+
+    private static final String TAG = "LoginActivity";
 
     private EditText phoneInput, passwordInput;
     private TextView phoneErrorText, passwordErrorText, forgotPasswordText, registerButton;
@@ -37,10 +41,13 @@ public class LoginActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
 
+
+        RetrofitClient.init(this);
         apiService = RetrofitClient.getApiService();
         sharedPreferences = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
 
         initViews();
+
 
         if (isLoggedIn()) {
             navigateToMain();
@@ -63,7 +70,7 @@ public class LoginActivity extends AppCompatActivity {
             isPasswordVisible = !isPasswordVisible;
             if (isPasswordVisible) {
                 passwordInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
-                togglePasswordVisibility.setImageResource(android.R.drawable.ic_menu_close_clear_cancel); // Или иконка перечеркнутого глаза
+                togglePasswordVisibility.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
             } else {
                 passwordInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
                 togglePasswordVisibility.setImageResource(R.drawable.ic_eye);
@@ -71,7 +78,7 @@ public class LoginActivity extends AppCompatActivity {
             passwordInput.setSelection(passwordInput.getText().length());
         });
 
-
+        // 🔥 Очистка ошибок при фокусе
         phoneInput.setOnFocusChangeListener((v, hasFocus) -> {
             if (hasFocus) clearError(phoneInput, phoneErrorText);
         });
@@ -79,7 +86,7 @@ public class LoginActivity extends AppCompatActivity {
             if (hasFocus) clearError(passwordInput, passwordErrorText);
         });
 
-
+        // 🔥 Обработчики кнопок
         loginButton.setOnClickListener(v -> performLogin());
 
         registerButton.setOnClickListener(v -> {
@@ -89,6 +96,7 @@ public class LoginActivity extends AppCompatActivity {
         forgotPasswordText.setOnClickListener(v ->
                 Toast.makeText(this, "Функция в разработке", Toast.LENGTH_SHORT).show());
     }
+
 
     private void performLogin() {
         String rawPhone = phoneInput.getText().toString().trim();
@@ -101,24 +109,33 @@ public class LoginActivity extends AppCompatActivity {
         LoginRequest request = new LoginRequest(normalizedPhone, password);
 
         apiService.login(request).enqueue(new Callback<LoginResponse>() {
-
             @Override
             public void onResponse(Call<LoginResponse> call, Response<LoginResponse> response) {
                 setLoading(false);
+
                 if (response.isSuccessful() && response.body() != null) {
-                    saveUserData(response.body());
+                    LoginResponse loginResponse = response.body();
+
+                    UserStatusManager oldManager = UserStatusManager.getInstanceIfExists();
+                    if (oldManager != null) {
+                        oldManager.logout();  // ← Отправит оффлайн перед очисткой!
+                    }
 
 
-                    UserStatusManager statusManager =
-                            ((MessengerApplication) getApplication()).getStatusManager();
-                    statusManager.updateUserId(response.body().getUserId());
+                    RetrofitClient.clearTokens();
+
+                    saveUserData(loginResponse);
+
+                    UserStatusManager newManager = UserStatusManager.getInstance(LoginActivity.this);
+                    newManager.initWebSocket(loginResponse.getToken());
 
                     navigateToMain();
+
                 } else {
                     if (response.code() == 401 || response.code() == 404) {
                         showError(passwordInput, passwordErrorText, "Неверный номер или пароль");
                     } else {
-                        Toast.makeText(LoginActivity.this, "Ошибка сервера", Toast.LENGTH_LONG).show();
+                        Toast.makeText(LoginActivity.this, "Ошибка сервера: " + response.code(), Toast.LENGTH_LONG).show();
                     }
                 }
             }
@@ -126,10 +143,12 @@ public class LoginActivity extends AppCompatActivity {
             @Override
             public void onFailure(Call<LoginResponse> call, Throwable t) {
                 setLoading(false);
+                Log.e(TAG, "Login failed", t);
                 Toast.makeText(LoginActivity.this, "Нет соединения с интернетом", Toast.LENGTH_LONG).show();
             }
         });
     }
+
 
     private boolean validateInputs(String phone, String password) {
         boolean isValid = true;
@@ -153,32 +172,37 @@ public class LoginActivity extends AppCompatActivity {
         return isValid;
     }
 
-
     private void showError(EditText editText, TextView errorText, String message) {
         editText.setBackgroundResource(R.drawable.bg_input_field_error);
         errorText.setText(message);
         errorText.setVisibility(View.VISIBLE);
     }
 
+
     private void clearError(EditText editText, TextView errorText) {
         editText.setBackgroundResource(R.drawable.bg_input_field);
         errorText.setVisibility(View.GONE);
     }
 
+
     private void setLoading(boolean loading) {
         loginButton.setEnabled(!loading);
         progressBar.setVisibility(loading ? View.VISIBLE : View.GONE);
 
-
         if (loading) {
-            ((android.widget.Button) loginButton).setText("");
+            if (loginButton instanceof android.widget.Button) {
+                ((android.widget.Button) loginButton).setText("");
+            }
         } else {
-            ((android.widget.Button) loginButton).setText("Войти");
+            if (loginButton instanceof android.widget.Button) {
+                ((android.widget.Button) loginButton).setText("Войти");
+            }
         }
 
         phoneInput.setEnabled(!loading);
         passwordInput.setEnabled(!loading);
     }
+
 
     private String normalizePhone(String phone) {
         if (phone == null) return "";
@@ -189,6 +213,7 @@ public class LoginActivity extends AppCompatActivity {
         return cleaned;
     }
 
+
     private void saveUserData(LoginResponse response) {
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putString(Constants.KEY_ACCESS_TOKEN, response.getToken());
@@ -196,10 +221,20 @@ public class LoginActivity extends AppCompatActivity {
         editor.putLong(Constants.KEY_USER_ID, response.getUserId());
         editor.putString(Constants.KEY_USERNAME, response.getUsername());
         editor.apply();
+
+
+        RetrofitClient.setTokens(
+                response.getToken(),
+                response.getRefreshToken(),
+                response.getUserId()
+        );
+
+        Log.d(TAG, "✅ User data saved: userId=" + response.getUserId() + ", username=" + response.getUsername());
     }
 
+
     private boolean isLoggedIn() {
-        String token = sharedPreferences.getString(Constants.KEY_ACCESS_TOKEN, null);
+        String token = RetrofitClient.getToken();
         return token != null && !token.isEmpty();
     }
 
@@ -208,5 +243,22 @@ public class LoginActivity extends AppCompatActivity {
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(intent);
         finish();
+    }
+
+
+    public static void logoutAndClearSession(Context context) {
+
+        UserStatusManager manager = UserStatusManager.getInstanceIfExists();
+        if (manager != null) {
+            manager.logout();
+        }
+
+
+        RetrofitClient.clearTokens();
+
+
+        Intent intent = new Intent(context, LoginActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        context.startActivity(intent);
     }
 }

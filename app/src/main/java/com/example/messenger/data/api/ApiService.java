@@ -44,4 +44,6 @@ public interface ApiService {
 
     @POST("message-reads")
     Call<Map<String, Object>> markAsRead(@Body Map<String, Long> request);
+    @POST("auth/refresh")
+    Call<Map<String, Object>> refreshToken(@Body Map<String, String> request);
 }
