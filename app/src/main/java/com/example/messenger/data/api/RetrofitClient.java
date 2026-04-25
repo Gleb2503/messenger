@@ -4,12 +4,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.util.Log;
+
+import com.example.messenger.login.LoginActivity;
 import com.example.messenger.util.Constants;
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
@@ -265,7 +265,7 @@ public class RetrofitClient {
 
 
             new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                Intent intent = new Intent(context, com.example.messenger.LoginActivity.class);
+                Intent intent = new Intent(context, LoginActivity.class);
                 intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK |
                         Intent.FLAG_ACTIVITY_CLEAR_TASK);
                 context.startActivity(intent);

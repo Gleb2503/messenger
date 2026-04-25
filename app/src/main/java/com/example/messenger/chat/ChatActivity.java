@@ -1,9 +1,9 @@
-package com.example.messenger;
+package com.example.messenger.chat;
 
+import android.content.Intent;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -12,14 +12,32 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.example.messenger.media.MediaViewerActivity;
+import com.example.messenger.status.AppStatusManager;
+import com.example.messenger.message.MessageAdapter;
+import com.example.messenger.message.MessageItem;
+import com.example.messenger.MessengerApplication;
+import com.example.messenger.R;
+import com.example.messenger.status.UserStatusManager;
 import com.example.messenger.data.api.ApiService;
 import com.example.messenger.data.api.RetrofitClient;
+import com.example.messenger.data.api.attachment.AttachmentResponse;
+import com.example.messenger.data.websocket.MessageType;
 import com.example.messenger.data.websocket.StompClient;
+import com.example.messenger.util.FileHelper;
+import com.example.messenger.util.ImageUtils;
+import com.github.dhaval2404.imagepicker.ImagePicker;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -33,6 +51,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.RequestBody;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -40,6 +61,8 @@ import retrofit2.Response;
 public class ChatActivity extends AppCompatActivity {
 
     private static final String TAG = "ChatActivity";
+    private static final int IMAGE_PICKER_REQUEST = 1001;
+
     private final Map<String, String> statusSubscriptions = new HashMap<>();
     private boolean chatTopicSubscribed = false;
     private String chatTopicSubscriptionId = null;
@@ -47,7 +70,7 @@ public class ChatActivity extends AppCompatActivity {
     private RecyclerView messagesRecyclerView;
     private LinearLayout emptyState, noConnectionState;
     private EditText messageInput;
-    private ImageView sendButton, backButton, menuIcon, statusIcon;
+    private ImageView sendButton, backButton, menuIcon, statusIcon, attachButton;
     private TextView chatName, statusText;
     private Button retryButton;
 
@@ -102,7 +125,6 @@ public class ChatActivity extends AppCompatActivity {
             Log.d(TAG, "🔗 Using shared StompClient from UserStatusManager");
             this.stompClient = sharedClient;
             long managerUserId = statusManager.getCurrentUserId();
-
             subscribeToChatTopics(managerUserId);
 
             if (partnerUserId > 0 && !partnerStatusSubscribed) {
@@ -112,13 +134,11 @@ public class ChatActivity extends AppCompatActivity {
         } else {
             Log.d(TAG, "⚠️ WebSocket not connected yet, will subscribe when ready");
 
-
             readyListener = () -> {
                 if (!isFinishing() && !isDestroyed()) {
                     UserStatusManager sm = ((MessengerApplication) getApplication()).getStatusManager();
                     this.stompClient = sm.getStompClient();
                     long userId = sm.getCurrentUserId();
-
                     subscribeToChatTopics(userId);
 
                     if (partnerUserId > 0 && !partnerStatusSubscribed) {
@@ -181,6 +201,18 @@ public class ChatActivity extends AppCompatActivity {
         stompClient = null;
     }
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == IMAGE_PICKER_REQUEST && resultCode == RESULT_OK && data != null) {
+            Uri imageUri = data.getData();
+            if (imageUri != null) {
+                sendImageMessage(imageUri);
+            }
+        }
+    }
+
     private void initViews() {
         messagesRecyclerView = findViewById(R.id.messagesRecyclerView);
         emptyState = findViewById(R.id.emptyState);
@@ -194,10 +226,20 @@ public class ChatActivity extends AppCompatActivity {
         chatName = findViewById(R.id.chatName);
         retryButton = findViewById(R.id.retryButton);
 
+        attachButton = findViewById(R.id.attachButton);
         chatName.setText(chatNameStr);
         updatePartnerStatus(false);
 
         messageAdapter = new MessageAdapter();
+
+
+        messageAdapter.setOnMediaViewerListener((mediaItems, position) -> {
+            MediaViewerActivity.start(ChatActivity.this, mediaItems, position, chatId);
+        });
+
+
+        messageAdapter.setOnMediaClickListener((url, type) -> openMediaViewer(url, type));
+
         messagesRecyclerView.setLayoutManager(new LinearLayoutManager(this));
         messagesRecyclerView.setAdapter(messageAdapter);
     }
@@ -206,6 +248,7 @@ public class ChatActivity extends AppCompatActivity {
         backButton.setOnClickListener(v -> finish());
         menuIcon.setOnClickListener(v -> showChatMenu());
         sendButton.setOnClickListener(v -> sendMessage());
+        attachButton.setOnClickListener(v -> openGallery());
 
         messageInput.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEND) {
@@ -226,6 +269,15 @@ public class ChatActivity extends AppCompatActivity {
         });
 
         retryButton.setOnClickListener(v -> loadMessages());
+    }
+
+    private void openGallery() {
+        ImagePicker.with(this)
+                .crop()
+                .compress(1024)
+                .maxResultSize(1080, 1080)
+                .galleryOnly()
+                .start(IMAGE_PICKER_REQUEST);
     }
 
     private void updatePartnerStatus(boolean isOnline) {
@@ -254,13 +306,11 @@ public class ChatActivity extends AppCompatActivity {
 
         if (chatId > 0 && !chatTopicSubscribed) {
             String chatTopic = "/topic/chat/" + chatId;
-
             String subId = stompClient.subscribe(chatTopic, payload -> {
                 if (isFinishing() || isDestroyed()) {
                     Log.w(TAG, "⚠️ Activity destroyed, skipping message");
                     return;
                 }
-
                 Log.d(TAG, "📨 MESSAGE RECEIVED from WS!");
                 if (payload instanceof Map) {
                     @SuppressWarnings("unchecked")
@@ -280,22 +330,18 @@ public class ChatActivity extends AppCompatActivity {
 
         if (currentUserId > 0) {
             String personalQueue = "/user/" + currentUserId + "/queue/user.status";
-
             stompClient.subscribe(personalQueue, payload -> {
                 if (isFinishing() || isDestroyed()) return;
-
                 Log.d(TAG, "📥 PERSONAL QUEUE response: " + payload);
                 if (payload instanceof Map) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> response = (Map<String, Object>) payload;
                     Object userIdObj = response.get("userId");
                     Object onlineObj = response.get("online");
-
                     if (userIdObj instanceof Number && onlineObj instanceof Boolean) {
                         Long targetUserId = ((Number) userIdObj).longValue();
                         Boolean isOnline = (Boolean) onlineObj;
                         Log.d(TAG, "🎯 Personal response: user=" + targetUserId + ", online=" + isOnline);
-
                         if (targetUserId == partnerUserId) {
                             AppStatusManager.getInstance().updateStatus(partnerUserId, isOnline, "personal_queue");
                             runOnUiThread(() -> updatePartnerStatus(isOnline));
@@ -306,25 +352,48 @@ public class ChatActivity extends AppCompatActivity {
             Log.d(TAG, "📡 Subscribed to personal queue: " + personalQueue);
         }
 
+
         stompClient.subscribe("/topic/message/status", payload -> {
             if (isFinishing() || isDestroyed()) return;
 
             Log.d(TAG, "📨 Message status update received: " + payload);
+
             if (payload instanceof Map) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> update = (Map<String, Object>) payload;
+
                 Object msgIdObj = update.get("messageId");
                 Long messageId = null;
+
                 if (msgIdObj instanceof Number) {
                     messageId = ((Number) msgIdObj).longValue();
+                } else if (msgIdObj instanceof String) {
+                    try {
+                        messageId = Long.parseLong((String) msgIdObj);
+                    } catch (NumberFormatException e) {
+                        Log.e(TAG, "❌ Failed to parse messageId: " + msgIdObj);
+                    }
                 }
+
                 String newStatus = (String) update.get("status");
+                Long chatIdFromUpdate = null;
+                if (update.get("chatId") instanceof Number) {
+                    chatIdFromUpdate = ((Number) update.get("chatId")).longValue();
+                }
+
+                Log.d(TAG, "✏️ Parsed: messageId=" + messageId + ", status=" + newStatus + ", chatId=" + chatIdFromUpdate);
+
                 if (messageId != null && newStatus != null) {
                     int status = parseStatus(newStatus);
-                    Log.d(TAG, "✏️ Updating message " + messageId + " status to " + status);
+
+
                     boolean updated = messageAdapter.updateItemStatus(messageId, status);
+
                     if (updated) {
                         Log.d(TAG, "✓✓ UI updated for message " + messageId);
+                    } else {
+                        Log.w(TAG, "⚠️ Message " + messageId + " not found in adapter, trying to reload...");
+
                     }
                 }
             }
@@ -346,14 +415,12 @@ public class ChatActivity extends AppCompatActivity {
             Log.w(TAG, "⚠️ Cannot subscribe: invalid partnerUserId=" + partnerUserId);
             return;
         }
-
         if (stompClient == null || !stompClient.isConnected()) {
             Log.w(TAG, "⚠️ Cannot subscribe: WebSocket not connected");
             return;
         }
 
         String destination = "/topic/user/" + partnerUserId + "/status";
-
         if (statusSubscriptions.containsKey(destination)) {
             Log.d(TAG, "✅ Already subscribed to " + destination + ", skipping");
             return;
@@ -367,7 +434,6 @@ public class ChatActivity extends AppCompatActivity {
                 Boolean online = (Boolean) status.get("online");
                 Object userIdObj = status.get("userId");
                 Long userId = userIdObj instanceof Number ? ((Number) userIdObj).longValue() : null;
-
                 if (online != null && userId != null && userId == partnerUserId) {
                     Log.d(TAG, "🟢 Updating: online=" + online);
                     AppStatusManager.getInstance().updateStatus(partnerUserId, online, "public_topic");
@@ -379,7 +445,6 @@ public class ChatActivity extends AppCompatActivity {
         if (subscriptionId != null) {
             statusSubscriptions.put(destination, subscriptionId);
             Log.d(TAG, "📡 Subscribed to " + destination + " with id: " + subscriptionId);
-
             Map<String, Object> request = new HashMap<>();
             request.put("userId", partnerUserId);
             request.put("requesterId", currentUserId);
@@ -389,12 +454,10 @@ public class ChatActivity extends AppCompatActivity {
 
     private void tryExtractPartnerUserId(List<MessageItem> messages) {
         if (partnerStatusSubscribed || partnerUserId > 0) return;
-
         for (MessageItem item : messages) {
             if (item.getType() == MessageItem.TYPE_INCOMING && item.getSenderId() > 0) {
                 partnerUserId = item.getSenderId();
                 Log.d(TAG, "🔍 Extracted partnerUserId=" + partnerUserId + " from history");
-
                 if (stompClient != null && stompClient.isConnected()) {
                     Log.d(TAG, "📡 Calling subscribeToPartnerStatus() after extraction");
                     subscribeToPartnerStatus(getCurrentUserId());
@@ -409,7 +472,6 @@ public class ChatActivity extends AppCompatActivity {
 
     private void onNewMessageReceived(final Map<String, Object> msg, long currentUserId) {
         if (msg == null) return;
-
         if (isFinishing() || isDestroyed()) {
             Log.w(TAG, "⚠️ Activity is finishing/destroyed, skipping message update");
             return;
@@ -423,52 +485,107 @@ public class ChatActivity extends AppCompatActivity {
 
             try {
                 Object idObj = msg.get("id");
-                long realId = idObj != null && idObj instanceof Number ? ((Number) idObj).longValue() : System.currentTimeMillis();
+                long realId = -1;
+                if (idObj instanceof Number) {
+                    realId = ((Number) idObj).longValue();
+                }
+                if (realId <= 0) {
+                    Log.e(TAG, "❌ Invalid messageId: " + idObj);
+                    return;
+                }
 
                 String text = msg.get("text") != null ? (String) msg.get("text") : "";
                 String createdAt = (String) msg.get("createdAt");
                 String time = createdAt != null ? formatTime(createdAt) : getCurrentTime();
 
                 Object senderIdObj = msg.get("senderId");
-                long senderId = 0;
-                if (senderIdObj instanceof Number) {
-                    senderId = ((Number) senderIdObj).longValue();
-                }
+                long senderId = senderIdObj instanceof Number ? ((Number) senderIdObj).longValue() : 0;
 
                 int status = parseStatus(msg.get("status"));
                 int type = (senderId == currentUserId) ? MessageItem.TYPE_OUTGOING : MessageItem.TYPE_INCOMING;
 
-                Log.d(TAG, "🔍 New msg: id=" + realId + ", senderId=" + senderId + ", type=" + (type == MessageItem.TYPE_OUTGOING ? "OUT" : "IN"));
+                MessageType messageType = MessageType.TEXT;
+                String fileUrl = null;
+                String fileName = null;
+                long fileSize = 0;
+
+                if (msg.containsKey("attachments") && msg.get("attachments") instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> attachments = (List<Map<String, Object>>) msg.get("attachments");
+                    if (!attachments.isEmpty()) {
+                        Map<String, Object> att = attachments.get(0);
+                        fileUrl = (String) att.get("fileUrl");
+                        fileName = (String) att.get("fileName");
+                        if (att.get("fileSize") instanceof Number) {
+                            fileSize = ((Number) att.get("fileSize")).longValue();
+                        }
+                        String attType = (String) att.get("fileType");
+                        if (attType != null) {
+                            if (attType.startsWith("image/")) messageType = MessageType.IMAGE;
+                            else if (attType.startsWith("video/")) messageType = MessageType.VIDEO;
+                            else messageType = MessageType.FILE;
+                        }
+                        Log.d(TAG, "📎 Parsed attachment from WS: url=" + fileUrl + ", type=" + messageType);
+                    }
+                }
+
+                Log.d(TAG, "🔍 New msg: id=" + realId + ", senderId=" + senderId +
+                        ", type=" + (type == MessageItem.TYPE_OUTGOING ? "OUT" : "IN") +
+                        ", messageType=" + messageType);
+
 
                 if (type == MessageItem.TYPE_OUTGOING) {
                     List<MessageItem> items = messageAdapter.getItems();
                     for (int i = items.size() - 1; i >= 0; i--) {
                         MessageItem item = items.get(i);
-                        if (item.getType() == MessageItem.TYPE_OUTGOING &&
-                                item.getText().equals(text) &&
+
+
+                        boolean isOptimistic = item.getType() == MessageItem.TYPE_OUTGOING &&
                                 item.getStatus() == MessageItem.STATUS_SENT &&
-                                item.getSenderId() == currentUserId) {
-                            Log.d(TAG, "🔄 Found optimistic message, updating with real ID: " + realId);
-                            item.setId(realId);
-                            item.setStatus(status);
-                            messageAdapter.notifyItemChanged(i);
-                            return;
+                                item.getSenderId() == currentUserId;
+
+                        if (isOptimistic) {
+
+                            boolean textMatch = messageType == MessageType.TEXT && item.getText().equals(text);
+                            boolean fileMatch = messageType != MessageType.TEXT &&
+                                    item.getMessageType() == messageType;
+
+                            if (textMatch || fileMatch) {
+                                Log.d(TAG, "🔄 Found optimistic message, updating with real ID: " + realId);
+                                item.setId(realId);
+                                item.setStatus(status);
+
+
+                                if (fileUrl != null && !fileUrl.isEmpty()) {
+                                    item.setImageUrl(fileUrl);
+                                    item.setFileName(fileName);
+                                    item.setFileSize(fileSize);
+                                    item.setMessageType(messageType);
+                                    Log.d(TAG, "📎 Updated attachment from WS: " + fileUrl);
+                                }
+
+                                messageAdapter.notifyItemChanged(i);
+                                return;
+                            }
                         }
                     }
+                    Log.w(TAG, "⚠️ Optimistic message NOT found for id=" + realId +
+                            ", messageType=" + messageType);
                 }
 
-                MessageItem newItem = new MessageItem(realId, text, time, status, type, senderId);
+
+                MessageItem newItem = new MessageItem(realId, text, time, status, type, senderId, messageType, null);
+                if (fileUrl != null && !fileUrl.isEmpty()) {
+                    newItem.setImageUrl(fileUrl);
+                    newItem.setFileName(fileName);
+                    newItem.setFileSize(fileSize);
+                }
+
                 messageAdapter.addMessage(newItem);
                 showState(State.CONTENT);
                 scrollToBottom();
+                Log.d(TAG, "➕ Added new message with id=" + realId + ", hasAttachment=" + (fileUrl != null));
 
-                if (partnerUserId <= 0 && senderId != currentUserId && !partnerStatusSubscribed) {
-                    partnerUserId = senderId;
-                    if (stompClient != null && stompClient.isConnected()) {
-                        subscribeToPartnerStatus(currentUserId);
-                        partnerStatusSubscribed = true;
-                    }
-                }
 
                 if (senderId != currentUserId && stompClient != null && stompClient.isConnected()) {
                     Log.d(TAG, "📤 Auto-sending message.read for messageId=" + realId);
@@ -490,7 +607,6 @@ public class ChatActivity extends AppCompatActivity {
 
         List<MessageItem> items = messageAdapter.getItems();
         int markedCount = 0;
-
         for (int i = 0; i < items.size(); i++) {
             MessageItem item = items.get(i);
             if (item.getType() == MessageItem.TYPE_INCOMING && item.getStatus() != MessageItem.STATUS_READ) {
@@ -500,7 +616,6 @@ public class ChatActivity extends AppCompatActivity {
                 sendMessageReadRequest(item.getId());
             }
         }
-
         if (markedCount > 0) {
             Log.d(TAG, "✅ Marked " + markedCount + " messages as read");
         }
@@ -508,12 +623,10 @@ public class ChatActivity extends AppCompatActivity {
 
     private void sendMessageReadRequest(long messageId) {
         if (stompClient == null || !stompClient.isConnected()) return;
-
         Map<String, Object> readRequest = new HashMap<>();
         readRequest.put("messageId", messageId);
         readRequest.put("userId", getCurrentUserId());
         readRequest.put("chatId", chatId);
-
         Log.d(TAG, "📤 Sending message.read: messageId=" + messageId + ", chatId=" + chatId);
         stompClient.send("/app/message.read", readRequest);
     }
@@ -561,19 +674,36 @@ public class ChatActivity extends AppCompatActivity {
         for (Map<String, Object> msg : backendMessages) {
             Object idObj = msg.get("id");
             long id = idObj != null && idObj instanceof Number ? ((Number) idObj).longValue() : System.currentTimeMillis();
-
             String text = msg.get("text") != null ? (String) msg.get("text") : "";
             String createdAt = (String) msg.get("createdAt");
             String time = createdAt != null ? formatTime(createdAt) : getCurrentTime();
-
             Object senderIdObj = msg.get("senderId");
             long senderId = 0;
             if (senderIdObj instanceof Number) {
                 senderId = ((Number) senderIdObj).longValue();
             }
-
             int status = parseStatus(msg.get("status"));
             int type = (senderId == currentUserId) ? MessageItem.TYPE_OUTGOING : MessageItem.TYPE_INCOMING;
+
+            MessageType messageType = MessageType.TEXT;
+            String fileUrl = null;
+
+            if (msg.containsKey("attachments") && msg.get("attachments") instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> attachments = (List<Map<String, Object>>) msg.get("attachments");
+                if (!attachments.isEmpty()) {
+                    Map<String, Object> firstAttachment = attachments.get(0);
+                    fileUrl = (String) firstAttachment.get("fileUrl");
+                    String attachmentType = (String) firstAttachment.get("fileType");
+                    if (attachmentType != null && attachmentType.startsWith("image/")) {
+                        messageType = MessageType.IMAGE;
+                    } else if (attachmentType != null && attachmentType.startsWith("video/")) {
+                        messageType = MessageType.VIDEO;
+                    } else {
+                        messageType = MessageType.FILE;
+                    }
+                }
+            }
 
             String currentDateHeader = null;
             if (createdAt != null) {
@@ -596,7 +726,11 @@ public class ChatActivity extends AppCompatActivity {
                 lastDateHeader = currentDateHeader;
             }
 
-            items.add(new MessageItem(id, text, time, status, type, senderId));
+            MessageItem item = new MessageItem(id, text, time, status, type, senderId, messageType, null);
+            if (fileUrl != null && !fileUrl.isEmpty()) {
+                item.setImageUrl(fileUrl);
+            }
+            items.add(item);
         }
         return items;
     }
@@ -636,34 +770,201 @@ public class ChatActivity extends AppCompatActivity {
             Toast.makeText(this, "Введите сообщение", Toast.LENGTH_SHORT).show();
             return;
         }
-
         messageInput.setText("");
         showNoConnection(false);
 
         long currentUserId = getCurrentUserId();
+        long tempId = -System.currentTimeMillis();
 
-        long tempId = System.currentTimeMillis();
         MessageItem tempMsg = new MessageItem(
-                tempId,
-                text,
-                getCurrentTime(),
-                MessageItem.STATUS_SENT,
-                MessageItem.TYPE_OUTGOING,
-                currentUserId
+                tempId, text, getCurrentTime(),
+                MessageItem.STATUS_SENT, MessageItem.TYPE_OUTGOING,
+                currentUserId, MessageType.TEXT, null
         );
-
         messageAdapter.addMessage(tempMsg);
         showState(State.CONTENT);
         scrollToBottom();
-        Log.d(TAG, "➕ Added optimistic message to UI");
+        Log.d(TAG, "➕ Added optimistic text message to UI");
 
         if (stompClient != null && stompClient.isConnected()) {
-            Log.d(TAG, "📤 Sending via WebSocket...");
-            stompClient.sendMessage(String.valueOf(chatId), text);
+            Log.d(TAG, "📤 Sending text via WebSocket...");
+            stompClient.sendMessage(String.valueOf(chatId), text, MessageType.TEXT);
         } else {
-            Log.d(TAG, "⚠️ WS disconnected, sending via REST...");
+            Log.d(TAG, "⚠️ WS disconnected, sending text via REST...");
             sendViaRest(text);
         }
+    }
+
+
+    private void sendImageMessage(Uri imageUri) {
+        if (imageUri == null) {
+            Toast.makeText(this, "Ошибка выбора изображения", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        showNoConnection(false);
+        long currentUserId = getCurrentUserId();
+        long tempId = -System.currentTimeMillis() - 1;
+
+
+        MessageItem tempMsg = new MessageItem(
+                tempId, "", getCurrentTime(),
+                MessageItem.STATUS_SENDING, MessageItem.TYPE_OUTGOING,
+                currentUserId, MessageType.IMAGE, imageUri
+        );
+        messageAdapter.addMessage(tempMsg);
+        showState(State.CONTENT);
+        scrollToBottom();
+        Log.d(TAG, "➕ Added optimistic image message to UI");
+
+
+        createEmptyMessageOnServer(chatId, "image", new Callback<Long>() {
+            @Override
+            public void onResponse(Call<Long> call, Response<Long> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    Long realMessageId = response.body();  // ✅ Реальный положительный ID!
+                    Log.d(TAG, "✅ Message created on server, real ID: " + realMessageId);
+
+
+                    new Thread(() -> {
+                        File compressed = null;
+                        try {
+                            compressed = ImageUtils.compressImage(ChatActivity.this, imageUri);
+
+                            sendImageViaRest(compressed, realMessageId, chatId, tempId);
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error preparing image", e);
+                            runOnUiThread(() -> {
+                                messageAdapter.updateMessageStatus(tempId, MessageItem.STATUS_FAILED);
+                                Toast.makeText(ChatActivity.this, "Не удалось подготовить фото", Toast.LENGTH_SHORT).show();
+                            });
+                            if (compressed != null && compressed.exists()) {
+                                compressed.delete();
+                            }
+                        }
+                    }).start();
+                } else {
+                    Log.e(TAG, "❌ Failed to create message on server");
+                    runOnUiThread(() -> {
+                        messageAdapter.updateMessageStatus(tempId, MessageItem.STATUS_FAILED);
+                        Toast.makeText(ChatActivity.this, "Ошибка создания сообщения", Toast.LENGTH_SHORT).show();
+                    });
+                }
+            }
+
+            @Override
+            public void onFailure(Call<Long> call, Throwable t) {
+                Log.e(TAG, "❌ Network error creating message", t);
+                runOnUiThread(() -> {
+                    messageAdapter.updateMessageStatus(tempId, MessageItem.STATUS_FAILED);
+                    Toast.makeText(ChatActivity.this, "Нет соединения", Toast.LENGTH_SHORT).show();
+                });
+            }
+        });
+    }
+
+
+    private void createEmptyMessageOnServer(long chatId, String messageType, Callback<Long> callback) {
+        Map<String, Object> request = new HashMap<>();
+        request.put("chatId", chatId);
+        request.put("content", "");  // Пустой текст для изображения
+        request.put("messageType", messageType);
+
+        apiService.sendMessage(chatId, request).enqueue(new Callback<Map<String, Object>>() {
+            @Override
+            public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    Object idObj = response.body().get("id");
+                    if (idObj instanceof Number) {
+                        Long realId = ((Number) idObj).longValue();
+
+                        callback.onResponse(null, Response.success(realId));
+                        return;
+                    }
+                }
+
+                callback.onFailure(null, new Exception("Failed to get message ID"));
+            }
+
+            @Override
+            public void onFailure(Call<Map<String, Object>> call, Throwable t) {
+
+                callback.onFailure(null, t);
+            }
+        });
+    }
+
+    private String encodeFileToBase64(File file) throws IOException {
+        byte[] bytes = new byte[(int) file.length()];
+        try (FileInputStream fis = new FileInputStream(file)) {
+            fis.read(bytes);
+        }
+        return android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP);
+    }
+
+
+    private void sendImageViaRest(File imageFile, long messageId, long chatId, long tempId) {
+        String fileName = imageFile.getName();
+        long fileSize = imageFile.length();
+        String fileType = FileHelper.getMimeType(fileName);
+
+        RequestBody requestFile = RequestBody.create(
+                imageFile,
+                MediaType.parse(fileType != null ? fileType : "application/octet-stream")
+        );
+
+        MultipartBody.Part filePart = MultipartBody.Part.createFormData(
+                "file", fileName, requestFile
+        );
+
+        Log.d(TAG, "📤 Uploading attachment: messageId=" + messageId + ", fileName=" + fileName);
+
+        apiService.uploadAttachment(
+                filePart,
+                messageId,  // ✅ Теперь это реальный положительный ID из БД!
+                fileName,
+                fileSize,
+                fileType,
+                null
+        ).enqueue(new Callback<AttachmentResponse>() {
+            @Override
+            public void onResponse(Call<AttachmentResponse> call, Response<AttachmentResponse> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    AttachmentResponse result = response.body();
+                    runOnUiThread(() -> {
+                        // ✅ Обновляем сообщение по tempId, подставляя реальные данные
+                        messageAdapter.updateImageMessage(
+                                tempId,  // ищем по временному ID
+                                result.id,
+                                result.fileUrl,
+                                MessageItem.STATUS_SENT
+                        );
+                        Log.d(TAG, "✅ Attachment uploaded: " + result.fileUrl);
+                    });
+                } else {
+                    Log.e(TAG, "❌ Upload failed: " + response.code() + " - " + response.message());
+                    runOnUiThread(() -> {
+                        messageAdapter.updateMessageStatus(tempId, MessageItem.STATUS_FAILED);
+                        Toast.makeText(ChatActivity.this,
+                                "Ошибка загрузки: " + response.code(),
+                                Toast.LENGTH_SHORT).show();
+                    });
+                }
+            }
+
+            @Override
+            public void onFailure(Call<AttachmentResponse> call, Throwable t) {
+                if (imageFile != null && imageFile.exists()) {
+                    boolean deleted = imageFile.delete();
+                    Log.d(TAG, "🗑️ Temp file deleted on failure: " + deleted);
+                }
+                Log.e(TAG, "❌ Upload failed: " + t.getMessage(), t);
+                runOnUiThread(() -> {
+                    messageAdapter.updateMessageStatus(tempId, MessageItem.STATUS_FAILED);
+                    Toast.makeText(ChatActivity.this, "Нет соединения", Toast.LENGTH_SHORT).show();
+                });
+            }
+        });
     }
 
     private void sendViaRest(String text) {
@@ -708,6 +1009,21 @@ public class ChatActivity extends AppCompatActivity {
                 messagesRecyclerView.smoothScrollToPosition(messageAdapter.getItemCount() - 1);
             }
         });
+    }
+
+    private void openMediaViewer(String url, MessageType type) {
+        if (url == null || url.isEmpty()) {
+            Toast.makeText(this, "Ошибка: URL пуст", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setData(Uri.parse(url));
+            startActivity(intent);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to open media viewer", e);
+            Toast.makeText(this, "Не удалось открыть изображение", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private enum State { LOADING, CONTENT, EMPTY, ERROR }

@@ -1,4 +1,4 @@
-package com.example.messenger;
+package com.example.messenger.status;
 
 import android.util.Log;
 

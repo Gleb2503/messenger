@@ -1,4 +1,4 @@
-package com.example.messenger;
+package com.example.messenger.login;
 
 import android.content.Context;
 import android.content.Intent;
@@ -13,6 +13,11 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+
+import com.example.messenger.MainActivity;
+import com.example.messenger.R;
+import com.example.messenger.register.RegisterActivity;
+import com.example.messenger.status.UserStatusManager;
 import com.example.messenger.data.api.ApiService;
 import com.example.messenger.data.api.RetrofitClient;
 import com.example.messenger.data.api.login.LoginRequest;

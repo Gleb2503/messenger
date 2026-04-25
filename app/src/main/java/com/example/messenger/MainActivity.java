@@ -20,9 +20,13 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.example.messenger.chat.ChatActivity;
+import com.example.messenger.chat.ChatAdapter;
+import com.example.messenger.chat.ChatItem;
+import com.example.messenger.login.LoginActivity;
 import com.example.messenger.data.api.ApiService;
 import com.example.messenger.data.api.RetrofitClient;
-import com.example.messenger.data.websocket.StompClient;
 import com.example.messenger.util.Constants;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textfield.TextInputEditText;
@@ -36,9 +40,6 @@ import java.util.stream.Collectors;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
-
-import androidx.lifecycle.ProcessLifecycleOwner;
-import androidx.lifecycle.Lifecycle;
 
 public class MainActivity extends AppCompatActivity {
 

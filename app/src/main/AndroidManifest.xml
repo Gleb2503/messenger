@@ -3,6 +3,16 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
 
     <application
         android:name=".MessengerApplication"
@@ -13,7 +23,7 @@
         android:theme="@style/Theme.Messenger">
 
         <activity
-            android:name=".LoginActivity"
+            android:name=".login.LoginActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -21,16 +31,18 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".RegisterActivity"
-            android:exported="false" />
+        <activity android:name=".register.RegisterActivity" android:exported="false" />
+        <activity android:name=".MainActivity" android:exported="false" />
 
         <activity
-            android:name=".MainActivity"
-            android:exported="false" />
-        <activity android:name=".ChatActivity"
+            android:name=".chat.ChatActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize"/>
+
+
+        <activity
+            android:name=".media.MediaViewerActivity"
+            android:exported="false" />
 
     </application>
 </manifest>

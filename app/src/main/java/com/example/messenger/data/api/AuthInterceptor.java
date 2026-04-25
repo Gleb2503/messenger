@@ -5,11 +5,10 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.util.Log;
 
-import com.example.messenger.LoginActivity;
+import com.example.messenger.login.LoginActivity;
 import com.example.messenger.util.Constants;
 import com.google.gson.Gson;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Semaphore;

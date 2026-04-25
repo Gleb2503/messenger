@@ -1,4 +1,4 @@
-package com.example.messenger;
+package com.example.messenger.chat;
 
 public class ChatItem {
 

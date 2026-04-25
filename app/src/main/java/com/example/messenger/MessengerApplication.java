@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.util.Log;
 import com.example.messenger.data.api.RetrofitClient;
+import com.example.messenger.status.UserStatusManager;
 
 public class MessengerApplication extends Application {
 

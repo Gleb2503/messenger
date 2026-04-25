@@ -351,15 +351,22 @@ public class StompClient {
     public void subscribeToChat(final String chatId, final StompSubscription callback) {
         subscribe("/topic/chat/" + chatId, callback);
     }
-
-    public void sendMessage(final String chatId, final String content) {
-        CreateMessageRequest request = new CreateMessageRequest();
-        request.chatId = Long.parseLong(chatId);
-        request.content = content;
-        request.messageType = "text";
+    public void sendMessage(final String chatId, final String content, MessageType type) {
+        CreateMessageRequest request = new CreateMessageRequest(
+                Long.parseLong(chatId),
+                content,
+                type != null ? type : MessageType.TEXT
+        );
         send("/app/chat.sendMessage", request);
     }
-
+    public void sendImageMessage(final String chatId, final String imageUrl) {
+        CreateMessageRequest request = new CreateMessageRequest(
+                Long.parseLong(chatId),
+                imageUrl,
+                MessageType.IMAGE
+        );
+        send("/app/chat.sendMessage", request);
+    }
     public void sendTyping(final String chatId, final boolean isTyping) {
         TypingNotification notification = new TypingNotification();
         notification.chatId = Long.parseLong(chatId);

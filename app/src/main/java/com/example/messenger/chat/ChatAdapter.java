@@ -1,4 +1,4 @@
-package com.example.messenger;
+package com.example.messenger.chat;
 
 import android.view.LayoutInflater;
 import android.view.View;
@@ -9,6 +9,8 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.ListAdapter;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.example.messenger.R;
 
 public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> {
 

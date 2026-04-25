@@ -1,5 +1,6 @@
 package com.example.messenger.data.api;
 
+import com.example.messenger.data.api.attachment.AttachmentResponse;
 import com.example.messenger.data.api.login.LoginRequest;
 import com.example.messenger.data.api.login.LoginResponse;
 import com.example.messenger.data.api.register.RegisterRequest;
@@ -7,12 +8,15 @@ import com.example.messenger.data.api.register.RegisterRequest;
 import java.util.List;
 import java.util.Map;
 
+import okhttp3.MultipartBody;
 import retrofit2.Call;
 import retrofit2.http.Body;
 import retrofit2.http.DELETE;
 import retrofit2.http.GET;
+import retrofit2.http.Multipart;
 import retrofit2.http.PATCH;
 import retrofit2.http.POST;
+import retrofit2.http.Part;
 import retrofit2.http.Path;
 
 public interface ApiService {
@@ -46,4 +50,19 @@ public interface ApiService {
     Call<Map<String, Object>> markAsRead(@Body Map<String, Long> request);
     @POST("auth/refresh")
     Call<Map<String, Object>> refreshToken(@Body Map<String, String> request);
+    @Multipart
+    @POST("attachments")
+    Call<AttachmentResponse> uploadAttachment(
+            @Part MultipartBody.Part file,
+            @Part("messageId") Long messageId,
+            @Part("fileName") String fileName,
+            @Part("fileSize") Long fileSize,
+            @Part("fileType") String fileType,
+            @Part("thumbnailUrl") String thumbnailUrl
+    );
+
+
+    @GET("attachments/{id}/download")
+    Call<okhttp3.ResponseBody> downloadAttachment(@Path("id") Long id);
+
 }

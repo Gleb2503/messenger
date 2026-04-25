@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">storage.yandexcloud.net</domain>
+        <domain includeSubdomains="true">178.212.12.112</domain>
+    </domain-config>
+</network-security-config>

@@ -27,6 +27,13 @@ android:maxWidth="280dp">
     android:text="Привет"
     android:textColor="#1F2937"
     android:textSize="15sp"/>
+    <ImageView
+        android:id="@+id/imagePreview"
+        android:layout_width="200dp"
+        android:layout_height="200dp"
+        android:scaleType="centerCrop"
+        android:visibility="gone"
+        android:contentDescription="Image preview" />
 
 <LinearLayout
     android:layout_width="wrap_content"
@@ -35,7 +42,6 @@ android:maxWidth="280dp">
     android:layout_gravity="end"
     android:layout_marginTop="2dp">
 
-    <!-- Для входящих статус обычно не показываем -->
     <ImageView
         android:id="@+id/statusIcon"
         android:layout_width="16dp"

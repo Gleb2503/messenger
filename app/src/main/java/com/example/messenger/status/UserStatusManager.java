@@ -1,4 +1,4 @@
-package com.example.messenger;
+package com.example.messenger.status;
 
 import android.content.Context;
 import android.os.Handler;
@@ -8,9 +8,7 @@ import com.example.messenger.data.api.RetrofitClient;
 import com.example.messenger.data.websocket.StompClient;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 public class UserStatusManager {
 

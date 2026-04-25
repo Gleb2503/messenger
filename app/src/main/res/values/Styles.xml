@@ -56,4 +56,10 @@
     <style name="TextAppearance.Messenger.Caption" parent="TextAppearance.Material3.LabelSmall">
         <item name="android:textColor">@color/text_tertiary</item>
     </style>
+    <style name="Theme.Messenger.FullScreen" parent="Theme.Messenger">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowTranslucentStatus">true</item>
+        <item name="android:windowTranslucentNavigation">true</item>
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
 </resources>
