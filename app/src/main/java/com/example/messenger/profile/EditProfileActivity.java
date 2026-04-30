@@ -1,30 +1,45 @@
 package com.example.messenger.profile;
 
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.util.Patterns;
+import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 
+import com.bumptech.glide.Glide;
 import com.example.messenger.R;
 import com.example.messenger.data.api.ApiService;
 import com.example.messenger.data.api.RetrofitClient;
+import com.example.messenger.data.api.attachment.AttachmentResponse;
 import com.example.messenger.util.Constants;
+import com.github.dhaval2404.imagepicker.ImagePicker;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.RequestBody;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -32,13 +47,19 @@ import retrofit2.Response;
 public class EditProfileActivity extends AppCompatActivity {
 
     private static final String TAG = "EditProfileActivity";
+    private static final int AVATAR_PICKER_REQUEST = 1002;
 
     private Toolbar toolbar;
     private ImageView backButton;
     private EditText displayNameInput, phoneInput, avatarInput, emailInput, passwordInput;
-    private TextView displayNameHint, phoneHint, avatarHint, emailHint, passwordHint;
+    private TextView displayNameHint, phoneHint, emailHint, passwordHint;
     private View saveButton;
     private ProgressBar progressBar;
+
+    private ImageView avatarPreview, avatarEditIcon;
+    private FrameLayout avatarContainer;
+    private ProgressBar avatarProgress;
+    private Uri selectedAvatarUri;
 
     private ApiService apiService;
     private Long currentUserId;
@@ -73,11 +94,15 @@ public class EditProfileActivity extends AppCompatActivity {
         passwordInput = findViewById(R.id.passwordInput);
         displayNameHint = findViewById(R.id.displayNameHint);
         phoneHint = findViewById(R.id.phoneHint);
-        avatarHint = findViewById(R.id.avatarHint);
         emailHint = findViewById(R.id.emailHint);
         passwordHint = findViewById(R.id.passwordHint);
         saveButton = findViewById(R.id.saveButton);
         progressBar = findViewById(R.id.progressBar);
+
+        avatarContainer = findViewById(R.id.avatarContainer);
+        avatarPreview = findViewById(R.id.avatarPreview);
+        avatarEditIcon = findViewById(R.id.avatarEditIcon);
+        avatarProgress = findViewById(R.id.avatarProgress);
 
         setSupportActionBar(toolbar);
         if (getSupportActionBar() != null) {
@@ -87,7 +112,6 @@ public class EditProfileActivity extends AppCompatActivity {
 
         setupFocusEffect(displayNameInput, displayNameHint, "До 100 символов");
         setupFocusEffect(phoneInput, phoneHint, "Формат: +7 (999) 123-45-67");
-        setupFocusEffect(avatarInput, avatarHint, "https://example.com/avatar.jpg");
         setupFocusEffect(emailInput, emailHint, "example@email.com");
         setupFocusEffect(passwordInput, passwordHint, "Минимум 6 символов");
     }
@@ -115,7 +139,6 @@ public class EditProfileActivity extends AppCompatActivity {
 
         if (displayNameInput != null) displayNameInput.addTextChangedListener(watcher);
         if (phoneInput != null) phoneInput.addTextChangedListener(watcher);
-        if (avatarInput != null) avatarInput.addTextChangedListener(watcher);
         if (emailInput != null) emailInput.addTextChangedListener(watcher);
         if (passwordInput != null) passwordInput.addTextChangedListener(watcher);
     }
@@ -123,15 +146,13 @@ public class EditProfileActivity extends AppCompatActivity {
     private void checkForChanges() {
         String displayName = displayNameInput != null ? displayNameInput.getText().toString().trim() : "";
         String phone = phoneInput != null ? phoneInput.getText().toString().trim() : "";
-        String avatar = avatarInput != null ? avatarInput.getText().toString().trim() : "";
         String email = emailInput != null ? emailInput.getText().toString().trim() : "";
-        String password = passwordInput != null ? passwordInput.getText().toString().trim() : "";
+        String avatar = selectedAvatarUri != null ? "changed" : (originalAvatar != null ? originalAvatar : "");
 
         hasChanges = !displayName.equals(originalDisplayName) ||
                 !phone.equals(originalPhone) ||
-                !avatar.equals(originalAvatar) ||
                 !email.equals(originalEmail) ||
-                !password.isEmpty();
+                !avatar.equals(originalAvatar);
     }
 
     private void loadCurrentData() {
@@ -152,11 +173,215 @@ public class EditProfileActivity extends AppCompatActivity {
         if (emailInput != null) {
             emailInput.setText(originalEmail != null ? originalEmail : "");
         }
+
+        loadAvatarPreview(originalAvatar);
+    }
+
+    private void loadAvatarPreview(String avatarUrl) {
+        if (avatarPreview == null) return;
+
+        if (avatarUrl != null && !avatarUrl.isEmpty() && avatarUrl.startsWith("http")) {
+            Glide.with(this)
+                    .load(avatarUrl.trim())
+                    .placeholder(R.drawable.bg_avatar_placeholder)
+                    .error(R.drawable.bg_avatar_placeholder)
+                    .circleCrop()
+                    .into(avatarPreview);
+        } else {
+            avatarPreview.setImageResource(R.drawable.bg_avatar_placeholder);
+        }
     }
 
     private void setupListeners() {
         backButton.setOnClickListener(v -> handleBackPress());
         saveButton.setOnClickListener(v -> performUpdate());
+
+        View.OnClickListener avatarClickListener = v -> openAvatarPicker();
+        avatarContainer.setOnClickListener(avatarClickListener);
+        if (avatarEditIcon != null) {
+            avatarEditIcon.setOnClickListener(avatarClickListener);
+        }
+    }
+
+    private void openAvatarPicker() {
+        ImagePicker.with(this)
+                .crop()
+                .compress(512)
+                .maxResultSize(512, 512)
+                .galleryOnly()
+                .start(AVATAR_PICKER_REQUEST);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == AVATAR_PICKER_REQUEST && resultCode == RESULT_OK && data != null) {
+            selectedAvatarUri = data.getData();
+            if (selectedAvatarUri != null) {
+                avatarPreview.setImageURI(selectedAvatarUri);
+                uploadAvatarToServer(selectedAvatarUri);
+            }
+        }
+    }
+
+    private void uploadAvatarToServer(Uri imageUri) {
+        if (imageUri == null) return;
+
+        setAvatarLoading(true);
+
+        new Thread(() -> {
+            try {
+                File compressedFile = getResizedImageFile(EditProfileActivity.this, imageUri);
+                if (compressedFile == null) {
+                    runOnUiThread(() -> {
+                        setAvatarLoading(false);
+                        Toast.makeText(this, R.string.select_image_error, Toast.LENGTH_SHORT).show();
+                    });
+                    return;
+                }
+
+                String fileName = "avatar_" + System.currentTimeMillis() + ".jpg";
+                long fileSize = compressedFile.length();
+                String fileType = "image/jpeg";
+
+                RequestBody requestFile = RequestBody.create(
+                        compressedFile,
+                        MediaType.parse(fileType)
+                );
+
+                MultipartBody.Part filePart = MultipartBody.Part.createFormData(
+                        "file", fileName, requestFile
+                );
+
+                createDummyMessageForAvatar(filePart, fileName, fileSize, fileType);
+
+            } catch (Exception e) {
+                Log.e(TAG, "Error uploading avatar", e);
+                runOnUiThread(() -> {
+                    setAvatarLoading(false);
+                    Toast.makeText(EditProfileActivity.this, R.string.upload_avatar_error, Toast.LENGTH_SHORT).show();
+                });
+            }
+        }).start();
+    }
+
+    private void createDummyMessageForAvatar(MultipartBody.Part filePart, String fileName,
+                                             long fileSize, String fileType) {
+        Map<String, Object> dummyRequest = new HashMap<>();
+        dummyRequest.put("chatId", currentUserId);
+        dummyRequest.put("content", "[AVATAR_UPDATE]");
+        dummyRequest.put("messageType", "file");
+
+        apiService.sendMessage(currentUserId != null ? currentUserId : -1L, dummyRequest)
+                .enqueue(new Callback<Map<String, Object>>() {
+                    @Override
+                    public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
+                        if (response.isSuccessful() && response.body() != null) {
+                            Object idObj = response.body().get("id");
+                            if (idObj instanceof Number) {
+                                Long dummyMessageId = ((Number) idObj).longValue();
+                                proceedWithAvatarUpload(filePart, fileName, fileSize, fileType, dummyMessageId);
+                                return;
+                            }
+                        }
+                        handleAvatarUploadError();
+                    }
+
+                    @Override
+                    public void onFailure(Call<Map<String, Object>> call, Throwable t) {
+                        Log.e(TAG, "Failed to create dummy message", t);
+                        handleAvatarUploadError();
+                    }
+                });
+    }
+
+    private void proceedWithAvatarUpload(MultipartBody.Part filePart, String fileName,
+                                         long fileSize, String fileType, Long messageId) {
+        apiService.uploadAttachment(filePart, messageId, fileName, fileSize, fileType, null)
+                .enqueue(new Callback<AttachmentResponse>() {
+                    @Override
+                    public void onResponse(Call<AttachmentResponse> call, Response<AttachmentResponse> response) {
+                        setAvatarLoading(false);
+
+                        if (response.isSuccessful() && response.body() != null) {
+                            String newAvatarUrl = response.body().fileUrl;
+
+                            if (avatarInput != null) {
+                                avatarInput.setText(newAvatarUrl);
+                            }
+
+                            originalAvatar = newAvatarUrl;
+
+                            SharedPreferences prefs = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
+                            prefs.edit().putString(Constants.KEY_AVATAR, newAvatarUrl).apply();
+
+                            runOnUiThread(() -> loadAvatarPreview(newAvatarUrl));
+
+                            Toast.makeText(EditProfileActivity.this, R.string.avatar_updated, Toast.LENGTH_SHORT).show();
+
+                            checkForChanges();
+
+                        } else {
+                            handleAvatarUploadError();
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<AttachmentResponse> call, Throwable t) {
+                        setAvatarLoading(false);
+                        Log.e(TAG, "Avatar upload failed", t);
+                        Toast.makeText(EditProfileActivity.this, "Ошибка сети при загрузке", Toast.LENGTH_SHORT).show();
+                        loadAvatarPreview(originalAvatar);
+                    }
+                });
+    }
+
+    private void handleAvatarUploadError() {
+        runOnUiThread(() -> {
+            setAvatarLoading(false);
+            Toast.makeText(EditProfileActivity.this, R.string.upload_avatar_error, Toast.LENGTH_SHORT).show();
+            loadAvatarPreview(originalAvatar);
+        });
+    }
+
+    private void setAvatarLoading(boolean isLoading) {
+        if (avatarProgress != null) {
+            avatarProgress.setVisibility(isLoading ? View.VISIBLE : View.GONE);
+        }
+        if (avatarEditIcon != null) {
+            avatarEditIcon.setVisibility(isLoading ? View.GONE : View.VISIBLE);
+        }
+        if (avatarContainer != null) {
+            avatarContainer.setEnabled(!isLoading);
+        }
+        if (isLoading) {
+            Toast.makeText(this, R.string.avatar_uploading, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private File getResizedImageFile(Context context, Uri uri) throws Exception {
+        InputStream inputStream = context.getContentResolver().openInputStream(uri);
+        Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+
+        int maxSize = 512;
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        float ratio = Math.min((float) maxSize / width, (float) maxSize / height);
+
+        Bitmap resized = Bitmap.createScaledBitmap(
+                bitmap,
+                (int) (width * ratio),
+                (int) (height * ratio),
+                true
+        );
+
+        File tempFile = new File(context.getCacheDir(), "avatar_temp.jpg");
+        FileOutputStream fos = new FileOutputStream(tempFile);
+        resized.compress(Bitmap.CompressFormat.JPEG, 85, fos);
+        fos.close();
+
+        return tempFile;
     }
 
     private void handleBackPress() {
@@ -182,11 +407,11 @@ public class EditProfileActivity extends AppCompatActivity {
     private void performUpdate() {
         String displayName = displayNameInput != null ? displayNameInput.getText().toString().trim() : "";
         String phone = phoneInput != null ? phoneInput.getText().toString().trim() : "";
-        String avatarUrl = avatarInput != null ? avatarInput.getText().toString().trim() : "";
         String email = emailInput != null ? emailInput.getText().toString().trim() : "";
+        String avatarUrl = originalAvatar != null ? originalAvatar : "";
         String password = passwordInput != null ? passwordInput.getText().toString().trim() : "";
 
-        if (!validate(displayName, phone, avatarUrl, email, password)) return;
+        if (!validate(displayName, phone, email, password)) return;
 
         setLoading(true);
 
@@ -194,7 +419,9 @@ public class EditProfileActivity extends AppCompatActivity {
         updateRequest.put("displayName", displayName);
         updateRequest.put("phoneNumber", normalizePhone(phone));
         updateRequest.put("avatarUrl", avatarUrl);
-        updateRequest.put("email", email);
+        if (!email.isEmpty()) {
+            updateRequest.put("email", email);
+        }
         if (!password.isEmpty()) {
             updateRequest.put("password", password);
         }
@@ -243,7 +470,7 @@ public class EditProfileActivity extends AppCompatActivity {
         });
     }
 
-    private boolean validate(String displayName, String phone, String avatarUrl, String email, String password) {
+    private boolean validate(String displayName, String phone, String email, String password) {
         boolean isValid = true;
 
         if (displayName.length() > 100) {
@@ -260,26 +487,17 @@ public class EditProfileActivity extends AppCompatActivity {
             clearError(phoneInput, phoneHint, "Формат: +7 (999) 123-45-67");
         }
 
-        if (!avatarUrl.isEmpty() && !avatarUrl.startsWith("http")) {
-            setError(avatarInput, avatarHint, "Должен начинаться с https://");
-            isValid = false;
-        } else {
-            clearError(avatarInput, avatarHint, "https://example.com/avatar.jpg");
-        }
-
-
-        if (!email.isEmpty() && !Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-            setError(emailInput, emailHint, "Неверный формат email");
+        if (!email.isEmpty() && !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            setError(emailInput, emailHint, "Некорректный email");
             isValid = false;
         } else {
             clearError(emailInput, emailHint, "example@email.com");
         }
 
-
         if (!password.isEmpty() && password.length() < 6) {
             setError(passwordInput, passwordHint, "Минимум 6 символов");
             isValid = false;
-        } else {
+        } else if (!password.isEmpty()) {
             clearError(passwordInput, passwordHint, "Минимум 6 символов");
         }
 
@@ -305,15 +523,11 @@ public class EditProfileActivity extends AppCompatActivity {
     }
 
     private String normalizePhone(String phone) {
-        if (phone == null || phone.isEmpty()) return "";
+        if (phone == null) return "";
         String cleaned = phone.replaceAll("[^\\d+]", "");
-        if (cleaned.startsWith("8") && cleaned.length() == 11) {
-            cleaned = "+7" + cleaned.substring(1);
-        } else if (cleaned.startsWith("7") && cleaned.length() == 11) {
-            cleaned = "+" + cleaned;
-        } else if (!cleaned.startsWith("+") && cleaned.length() == 10) {
-            cleaned = "+7" + cleaned;
-        }
+        if (cleaned.startsWith("8") && cleaned.length() == 11) cleaned = "+7" + cleaned.substring(1);
+        else if (cleaned.startsWith("7") && cleaned.length() == 11) cleaned = "+7" + cleaned.substring(1);
+        else if (!cleaned.startsWith("+") && cleaned.length() == 11) cleaned = "+" + cleaned;
         return cleaned;
     }
 
@@ -322,7 +536,6 @@ public class EditProfileActivity extends AppCompatActivity {
         if (saveButton != null) saveButton.setEnabled(!isLoading);
         if (displayNameInput != null) displayNameInput.setEnabled(!isLoading);
         if (phoneInput != null) phoneInput.setEnabled(!isLoading);
-        if (avatarInput != null) avatarInput.setEnabled(!isLoading);
         if (emailInput != null) emailInput.setEnabled(!isLoading);
         if (passwordInput != null) passwordInput.setEnabled(!isLoading);
         if (backButton != null) backButton.setEnabled(!isLoading);
@@ -338,6 +551,7 @@ public class EditProfileActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        handleBackPress();
+        super.onBackPressed();
+        overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right);
     }
 }

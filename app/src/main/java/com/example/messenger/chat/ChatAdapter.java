@@ -9,8 +9,9 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.ListAdapter;
 import androidx.recyclerview.widget.RecyclerView;
-
+import com.bumptech.glide.Glide;
 import com.example.messenger.R;
+import java.util.Locale;
 
 public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> {
 
@@ -84,7 +85,7 @@ public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> 
 
     static class ChatViewHolder extends RecyclerView.ViewHolder {
         private final TextView nameText, messageText, timeText, badgeView;
-        private final ImageView pinnedIcon;
+        private final ImageView pinnedIcon, avatarImage;
         private final View avatarBackground;
         private final TextView avatarLetter;
 
@@ -97,6 +98,7 @@ public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> 
             pinnedIcon = itemView.findViewById(R.id.pinnedIcon);
             avatarBackground = itemView.findViewById(R.id.avatarBackground);
             avatarLetter = itemView.findViewById(R.id.avatarLetter);
+            avatarImage = itemView.findViewById(R.id.avatarImage);
         }
 
         void bind(ChatItem item, OnChatClickListener listener, OnChatLongClickListener longListener) {
@@ -113,9 +115,7 @@ public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> 
 
             pinnedIcon.setVisibility(item.isPinned() ? View.VISIBLE : View.GONE);
 
-            if (!item.getName().isEmpty()) {
-                avatarLetter.setText(item.getName().substring(0, 1).toUpperCase());
-            }
+            loadAvatar(item.getAvatarUrl(), item.getName());
 
             itemView.setOnClickListener(v -> {
                 if (listener != null) {
@@ -131,6 +131,29 @@ public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> 
                 return false;
             });
         }
+
+        private void loadAvatar(String avatarUrl, String userName) {
+            if (avatarUrl != null && !avatarUrl.isEmpty() && avatarUrl.startsWith("http")) {
+                avatarImage.setVisibility(View.VISIBLE);
+                avatarBackground.setVisibility(View.GONE);
+                avatarLetter.setVisibility(View.GONE);
+                Glide.with(itemView.getContext())
+                        .load(avatarUrl.trim())
+                        .placeholder(R.drawable.bg_avatar_placeholder)
+                        .error(R.drawable.bg_avatar_placeholder)
+                        .circleCrop()
+                        .into(avatarImage);
+            } else {
+                avatarImage.setVisibility(View.GONE);
+                avatarBackground.setVisibility(View.VISIBLE);
+                avatarLetter.setVisibility(View.VISIBLE);
+                if (userName != null && !userName.isEmpty()) {
+                    avatarLetter.setText(userName.substring(0, 1).toUpperCase(Locale.getDefault()));
+                } else {
+                    avatarLetter.setText("?");
+                }
+            }
+        }
     }
 
     static class ChatDiffCallback extends DiffUtil.ItemCallback<ChatItem> {
@@ -145,7 +168,9 @@ public class ChatAdapter extends ListAdapter<ChatItem, RecyclerView.ViewHolder> 
                     oldItem.getLastMessage().equals(newItem.getLastMessage()) &&
                     oldItem.getTime().equals(newItem.getTime()) &&
                     oldItem.getUnreadCount() == newItem.getUnreadCount() &&
-                    oldItem.isPinned() == newItem.isPinned();
+                    oldItem.isPinned() == newItem.isPinned() &&
+                    (oldItem.getAvatarUrl() == null ? newItem.getAvatarUrl() == null :
+                            oldItem.getAvatarUrl().equals(newItem.getAvatarUrl()));
         }
     }
 }

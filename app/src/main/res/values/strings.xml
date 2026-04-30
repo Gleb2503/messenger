@@ -46,10 +46,17 @@
     <string name="email_placeholder">example@email.com</string>
     <string name="password_hint">Пароль</string>
     <string name="password_placeholder">••••••••</string>
+
     <string name="avatar_hint">Аватар</string>
     <string name="avatar_change_text">📷 Выбрать из галереи</string>
     <string name="avatar_url_placeholder">https://example.com/avatar.jpg</string>
-    <string name="avatar_uploading">Загрузка аватара…</string>
-    <string name="avatar_uploaded">✅ Аватар обновлён</string>
-    <string name="avatar_upload_error">❌ Ошибка загрузки аватара</string>
+
+
+    <string name="avatar_preview_desc">Предпросмотр аватара</string>
+    <string name="change_avatar">Изменить аватар</string>
+    <string name="tap_to_change_avatar">Нажмите, чтобы изменить аватар</string>
+    <string name="select_image_error">Не удалось выбрать изображение</string>
+    <string name="upload_avatar_error">Ошибка загрузки аватара</string>
+    <string name="avatar_uploading">Загрузка аватара...</string>
+    <string name="avatar_updated">Аватар успешно обновлён</string>
 </resources>

@@ -1,6 +1,7 @@
 package com.example.messenger;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -20,7 +21,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-
+import com.bumptech.glide.Glide;
 import com.example.messenger.chat.ChatActivity;
 import com.example.messenger.chat.ChatAdapter;
 import com.example.messenger.chat.ChatItem;
@@ -31,13 +32,11 @@ import com.example.messenger.profile.ProfileActivity;
 import com.example.messenger.util.Constants;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textfield.TextInputEditText;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -45,17 +44,14 @@ import retrofit2.Response;
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
-
     private static MainActivity instance;
-
 
     private RecyclerView chatRecyclerView;
     private View emptyState, errorState, progressBar;
     private EditText searchInput;
-    private ImageView clearButton;
+    private ImageView clearButton, profileIcon;
     private ProgressBar searchProgressBar;
     private FloatingActionButton fabAddChat;
-
 
     private ChatAdapter chatAdapter;
     private ApiService apiService;
@@ -64,12 +60,8 @@ public class MainActivity extends AppCompatActivity {
     private long currentUserId;
     private String authToken;
 
-
     private static final boolean TEST_EMPTY_STATE = false;
     private static final boolean TEST_ERROR_STATE = false;
-
-
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -84,6 +76,7 @@ public class MainActivity extends AppCompatActivity {
         authToken = RetrofitClient.getToken();
 
         initViews();
+        loadProfileAvatar();
         setupClickListeners();
         setupSearch();
         loadChats();
@@ -92,13 +85,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-
+        loadProfileAvatar();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-
     }
 
     @Override
@@ -107,18 +99,9 @@ public class MainActivity extends AppCompatActivity {
         if (instance == this) instance = null;
     }
 
-
-
-
-
     public static long getSharedCurrentUserId() {
         return instance != null ? instance.currentUserId : -1;
     }
-
-
-
-
-
 
     private void initViews() {
         chatRecyclerView = findViewById(R.id.chatRecyclerView);
@@ -129,6 +112,7 @@ public class MainActivity extends AppCompatActivity {
         clearButton = findViewById(R.id.clearButton);
         searchProgressBar = findViewById(R.id.searchProgressBar);
         fabAddChat = findViewById(R.id.fabAddChat);
+        profileIcon = findViewById(R.id.profileIcon);
 
         chatAdapter = new ChatAdapter();
         chatRecyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -143,13 +127,70 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void loadProfileAvatar() {
+        if (profileIcon == null) return;
+
+        SharedPreferences prefs = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
+        String avatarUrl = prefs.getString(Constants.KEY_AVATAR, "");
+
+        if (avatarUrl != null && !avatarUrl.isEmpty() && avatarUrl.startsWith("http")) {
+            loadAvatarIntoView(avatarUrl);
+        } else {
+            profileIcon.setImageResource(R.drawable.bg_avatar_placeholder);
+            fetchAvatarFromServer();
+        }
+    }
+
+    private void fetchAvatarFromServer() {
+        if (authToken == null || authToken.isEmpty() || currentUserId <= 0) return;
+
+        apiService.getUserProfile(currentUserId).enqueue(new Callback<Map<String, Object>>() {
+            @Override
+            public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    Object avatarObj = response.body().get("avatarUrl");
+                    if (avatarObj instanceof String) {
+                        String newAvatarUrl = (String) avatarObj;
+                        if (newAvatarUrl != null && !newAvatarUrl.isEmpty() && newAvatarUrl.startsWith("http")) {
+                            SharedPreferences prefs = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
+                            prefs.edit().putString(Constants.KEY_AVATAR, newAvatarUrl).apply();
+                            if (!isFinishing() && !isDestroyed()) {
+                                runOnUiThread(() -> loadAvatarIntoView(newAvatarUrl));
+                            }
+                        }
+                    }
+                }
+            }
+            @Override
+            public void onFailure(Call<Map<String, Object>> call, Throwable t) {
+                Log.e(TAG, "Failed to fetch avatar from server", t);
+            }
+        });
+    }
+
+    private void loadAvatarIntoView(String url) {
+        if (profileIcon == null) return;
+        if (url != null && !url.isEmpty() && url.startsWith("http")) {
+            Glide.with(this)
+                    .load(url.trim())
+                    .placeholder(R.drawable.bg_avatar_placeholder)
+                    .error(R.drawable.bg_avatar_placeholder)
+                    .circleCrop()
+                    .into(profileIcon);
+        } else {
+            profileIcon.setImageResource(R.drawable.bg_avatar_placeholder);
+        }
+    }
+
     private void setupClickListeners() {
-        findViewById(R.id.profileIcon).setOnClickListener(v -> {
+        profileIcon.setOnClickListener(v -> {
+            v.setAlpha(0.7f);
+            v.postDelayed(() -> v.setAlpha(1f), 150);
             Intent intent = new Intent(MainActivity.this, ProfileActivity.class);
             startActivity(intent);
-
             overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right);
         });
+
         findViewById(R.id.menuIcon).setOnClickListener(v -> showMenuDialog());
         findViewById(R.id.createChatButton).setOnClickListener(v -> showCreateChatDialog());
         findViewById(R.id.addContactButton).setOnClickListener(v ->
@@ -243,6 +284,7 @@ public class MainActivity extends AppCompatActivity {
                         allChats = mapBackendChatsToUI(backendChats);
                         chatAdapter.submitList(allChats);
                         showState(State.CONTENT);
+                        fetchPartnerAvatars(allChats);
                     }
                 } else {
                     if (response.code() == 401) {
@@ -261,16 +303,78 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void fetchPartnerAvatars(List<ChatItem> chats) {
+        SharedPreferences prefs = getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE);
+
+        for (ChatItem chat : chats) {
+            if (chat.isHeader()) continue;
+
+            if (chat.getAvatarUrl() != null && !chat.getAvatarUrl().isEmpty() && chat.getAvatarUrl().startsWith("http")) {
+                continue;
+            }
+
+            long partnerUserId = chat.getPartnerUserId();
+            if (partnerUserId <= 0) continue;
+
+            String cachedAvatar = prefs.getString("avatar_user_" + partnerUserId, "");
+            if (!cachedAvatar.isEmpty() && cachedAvatar.startsWith("http")) {
+                updateChatAvatar(chat.getId(), cachedAvatar);
+                continue;
+            }
+
+            apiService.getUserProfile(partnerUserId).enqueue(new Callback<Map<String, Object>>() {
+                @Override
+                public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
+                    if (response.isSuccessful() && response.body() != null) {
+                        Object avatarObj = response.body().get("avatarUrl");
+                        if (avatarObj instanceof String) {
+                            String avatarUrl = (String) avatarObj;
+                            if (avatarUrl != null && !avatarUrl.isEmpty() && avatarUrl.startsWith("http")) {
+                                prefs.edit().putString("avatar_user_" + partnerUserId, avatarUrl).apply();
+                                updateChatAvatar(chat.getId(), avatarUrl);
+                            }
+                        }
+                    }
+                }
+                @Override
+                public void onFailure(Call<Map<String, Object>> call, Throwable t) {
+                    Log.e(TAG, "Failed to fetch avatar for user " + partnerUserId, t);
+                }
+            });
+        }
+    }
+
+    private void updateChatAvatar(long chatId, String newAvatarUrl) {
+        runOnUiThread(() -> {
+            List<ChatItem> updatedList = new ArrayList<>();
+            for (ChatItem chat : allChats) {
+                if (chat.getId() == chatId && !chat.isHeader()) {
+                    updatedList.add(new ChatItem(
+                            chat.getId(),
+                            chat.getName(),
+                            chat.getLastMessage(),
+                            chat.getTime(),
+                            chat.getUnreadCount(),
+                            chat.isPinned(),
+                            chat.getPartnerUserId(),
+                            newAvatarUrl
+                    ));
+                } else {
+                    updatedList.add(chat);
+                }
+            }
+            chatAdapter.submitList(updatedList);
+        });
+    }
+
     private List<ChatItem> mapBackendChatsToUI(List<Map<String, Object>> backendChats) {
         List<ChatItem> uiList = new ArrayList<>();
-
         List<Map<String, Object>> pinnedChats = new ArrayList<>();
         List<Map<String, Object>> regularChats = new ArrayList<>();
 
         for (Map<String, Object> chat : backendChats) {
             Object pinnedObj = chat.get("pinned");
             boolean isPinned = false;
-
             if (pinnedObj instanceof Boolean) {
                 isPinned = (Boolean) pinnedObj;
             } else if (pinnedObj instanceof String) {
@@ -278,7 +382,6 @@ public class MainActivity extends AppCompatActivity {
             } else if (pinnedObj instanceof Number) {
                 isPinned = ((Number) pinnedObj).intValue() != 0;
             }
-
             if (isPinned) {
                 pinnedChats.add(chat);
             } else {
@@ -308,6 +411,10 @@ public class MainActivity extends AppCompatActivity {
         boolean isPinned = false;
         if (pinnedObj instanceof Boolean) {
             isPinned = (Boolean) pinnedObj;
+        } else if (pinnedObj instanceof String) {
+            isPinned = Boolean.parseBoolean((String) pinnedObj);
+        } else if (pinnedObj instanceof Number) {
+            isPinned = ((Number) pinnedObj).intValue() != 0;
         }
 
         long partnerUserId = -1;
@@ -322,6 +429,27 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
+        String avatarUrl = "";
+        if (chat.containsKey("avatarUrl") && chat.get("avatarUrl") instanceof String) {
+            avatarUrl = (String) chat.get("avatarUrl");
+        } else if (chat.containsKey("createdBy") && chat.get("createdBy") instanceof Map) {
+            Map<String, Object> createdBy = (Map<String, Object>) chat.get("createdBy");
+            if (createdBy.containsKey("avatarUrl") && createdBy.get("avatarUrl") instanceof String) {
+                avatarUrl = (String) createdBy.get("avatarUrl");
+            }
+        } else if (chat.containsKey("participants") && chat.get("participants") instanceof List) {
+            List<Map<String, Object>> participants = (List<Map<String, Object>>) chat.get("participants");
+            for (Map<String, Object> participant : participants) {
+                Object userIdObj = participant.get("userId");
+                if (userIdObj instanceof Number && ((Number) userIdObj).longValue() == partnerUserId) {
+                    if (participant.containsKey("avatarUrl") && participant.get("avatarUrl") instanceof String) {
+                        avatarUrl = (String) participant.get("avatarUrl");
+                        break;
+                    }
+                }
+            }
+        }
+
         return new ChatItem(
                 chat.get("id") != null ? ((Number) chat.get("id")).longValue() : 0L,
                 chat.get("name") != null ? (String) chat.get("name") : "Без названия",
@@ -329,7 +457,8 @@ public class MainActivity extends AppCompatActivity {
                 formatTime((String) chat.get("updatedAt")),
                 0,
                 isPinned,
-                partnerUserId
+                partnerUserId,
+                avatarUrl
         );
     }
 
@@ -389,7 +518,6 @@ public class MainActivity extends AppCompatActivity {
             public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
                 if (response.isSuccessful() && response.body() != null) {
                     Map<String, Object> newChat = response.body();
-
                     String chatName = (String) newChat.get("name");
                     long chatId = ((Number) newChat.get("id")).longValue();
 
@@ -402,21 +530,16 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
 
-                    Toast.makeText(MainActivity.this,
-                            "Чат с " + chatName + " создан", Toast.LENGTH_SHORT).show();
-
+                    Toast.makeText(MainActivity.this, "Чат с " + chatName + " создан", Toast.LENGTH_SHORT).show();
                     loadChats();
                     openChatActivity(chatId, chatName, partnerUserId);
                 } else {
                     if (response.code() == 404) {
-                        Toast.makeText(MainActivity.this,
-                                "Пользователь с таким номером не найден", Toast.LENGTH_LONG).show();
+                        Toast.makeText(MainActivity.this, "Пользователь с таким номером не найден", Toast.LENGTH_LONG).show();
                     } else if (response.code() == 400) {
-                        Toast.makeText(MainActivity.this,
-                                "Некорректные данные", Toast.LENGTH_LONG).show();
+                        Toast.makeText(MainActivity.this, "Некорректные данные", Toast.LENGTH_LONG).show();
                     } else {
-                        Toast.makeText(MainActivity.this,
-                                "Ошибка: " + response.code(), Toast.LENGTH_LONG).show();
+                        Toast.makeText(MainActivity.this, "Ошибка: " + response.code(), Toast.LENGTH_LONG).show();
                     }
                 }
             }
@@ -502,25 +625,20 @@ public class MainActivity extends AppCompatActivity {
     private void showMenuDialog() {
         String[] items = {"Настройки", "Профиль", "Выйти"};
 
-
         new AlertDialog.Builder(this)
                 .setTitle("Меню")
                 .setItems(items, (dialog, which) -> {
                     switch (which) {
                         case 0:
                             Toast.makeText(this, "Настройки", Toast.LENGTH_SHORT).show();
-
                             break;
-
                         case 1:
                             Intent profileIntent = new Intent(MainActivity.this, ProfileActivity.class);
                             startActivity(profileIntent);
                             break;
-
                         case 2:
                             logoutAndGoToLogin();
                             break;
-
                         default:
                             Toast.makeText(this, "Неизвестный пункт: " + which, Toast.LENGTH_SHORT).show();
                             break;
@@ -534,6 +652,14 @@ public class MainActivity extends AppCompatActivity {
         getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).edit().clear().apply();
         startActivity(new Intent(this, LoginActivity.class));
         finish();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == Constants.REQUEST_EDIT_PROFILE && resultCode == RESULT_OK) {
+            loadProfileAvatar();
+        }
     }
 
     private enum State { LOADING, CONTENT, EMPTY, ERROR }

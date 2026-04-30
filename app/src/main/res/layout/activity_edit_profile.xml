@@ -47,12 +47,65 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- Display Name -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="24dp"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <FrameLayout
+                    android:id="@+id/avatarContainer"
+                    android:layout_width="120dp"
+                    android:layout_height="120dp"
+                    android:background="@drawable/bg_avatar_placeholder"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackgroundBorderless">
+
+                    <ImageView
+                        android:id="@+id/avatarPreview"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:scaleType="centerCrop"
+                        android:contentDescription="@string/avatar_preview_desc" />
+
+                    <ImageView
+                        android:id="@+id/avatarEditIcon"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:layout_gravity="bottom|end"
+                        android:layout_margin="4dp"
+                        android:background="@drawable/bg_circle_white"
+                        android:padding="7dp"
+                        android:src="@drawable/ic_edit"
+                        android:contentDescription="@string/change_avatar" />
+
+                    <ProgressBar
+                        android:id="@+id/avatarProgress"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:layout_gravity="center"
+                        android:visibility="gone" />
+
+                </FrameLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/tap_to_change_avatar"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+
+            </LinearLayout>
+
             <TextView
                 android:id="@+id/displayNameHint"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="8dp"
                 android:text="@string/display_name_hint"
                 android:textColor="@color/text_secondary"
                 android:textSize="14sp" />
@@ -92,29 +145,19 @@
                 android:textColor="@color/text_primary"
                 android:textSize="16sp" />
 
-
-            <TextView
-                android:id="@+id/avatarHint"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:text="@string/avatar_url_hint"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
-
             <EditText
                 android:id="@+id/avatarInput"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="24dp"
                 android:background="@drawable/bg_input_field"
                 android:hint="@string/avatar_url_placeholder"
                 android:inputType="textUri"
                 android:maxLength="255"
                 android:padding="12dp"
                 android:textColor="@color/text_primary"
-                android:textSize="16sp" />
-
+                android:textSize="16sp"
+                android:visibility="gone" />
 
             <TextView
                 android:id="@+id/emailHint"
@@ -173,7 +216,6 @@
                 android:textAllCaps="false"
                 android:textSize="16sp"
                 app:cornerRadius="24dp" />
-
 
             <ProgressBar
                 android:id="@+id/progressBar"

@@ -215,19 +215,16 @@ public class LoginActivity extends AppCompatActivity {
         editor.putString(Constants.KEY_REFRESH_TOKEN, response.getRefreshToken());
         editor.putLong(Constants.KEY_USER_ID, response.getUserId());
 
-
         String username = response.getUsername();
         if (username != null && !username.isEmpty()) {
             editor.putString(Constants.KEY_USERNAME, username);
             Log.d(TAG, "📝 Username saved: " + username);
         }
 
-
         if (response.getPhone() != null && !response.getPhone().isEmpty()) {
             editor.putString("user_phone", response.getPhone());
             Log.d(TAG, "📱 Phone saved: " + response.getPhone());
         }
-
 
         if (response.getEmail() != null && !response.getEmail().isEmpty()) {
             editor.putString("user_email", response.getEmail());
@@ -237,6 +234,11 @@ public class LoginActivity extends AppCompatActivity {
         if (response.getName() != null && !response.getName().isEmpty()) {
             editor.putString("user_name", response.getName());
             Log.d(TAG, "👤 Name saved: " + response.getName());
+        }
+
+        if (response.getAvatarUrl() != null && !response.getAvatarUrl().isEmpty()) {
+            editor.putString(Constants.KEY_AVATAR, response.getAvatarUrl());
+            Log.d(TAG, "🖼️ Avatar saved: " + response.getAvatarUrl());
         }
 
         editor.apply();

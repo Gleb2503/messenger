@@ -25,6 +25,8 @@ public class LoginResponse {
     @SerializedName("name")
     private String name;
 
+    @SerializedName("avatarUrl")
+    private String avatarUrl;
 
     public LoginResponse() {
     }
@@ -35,8 +37,6 @@ public class LoginResponse {
         this.userId = userId;
         this.username = username;
     }
-
-
 
     public String getToken() {
         return token;
@@ -66,7 +66,9 @@ public class LoginResponse {
         return name;
     }
 
-
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
 
     public void setToken(String token) {
         this.token = token;
@@ -96,6 +98,10 @@ public class LoginResponse {
         this.name = name;
     }
 
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
+    }
+
     @Override
     public String toString() {
         return "LoginResponse{" +
@@ -106,6 +112,7 @@ public class LoginResponse {
                 ", phone='" + phone + '\'' +
                 ", email='" + email + '\'' +
                 ", name='" + name + '\'' +
+                ", avatarUrl='" + avatarUrl + '\'' +
                 '}';
     }
 }

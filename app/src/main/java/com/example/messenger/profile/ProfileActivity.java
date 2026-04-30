@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -12,6 +13,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 
+import com.bumptech.glide.Glide;
 import com.example.messenger.R;
 import com.example.messenger.data.api.ApiService;
 import com.example.messenger.data.api.RetrofitClient;
@@ -36,16 +38,17 @@ public class ProfileActivity extends AppCompatActivity {
     private static ProfileActivity instance;
 
     private Toolbar toolbar;
-    private ImageView backButton, moreOptionsButton;
+    private ImageView backButton, moreOptionsButton, profileAvatar;
+    private FrameLayout avatarContainer;
     private TextView userName, userUsername, userEmail, userPhone, registrationDate;
     private MaterialButton editProfileButton;
     private MaterialCardView emailCard, phoneCard, registrationCard;
 
     private String username = "";
-    private String displayName = "";
     private String handle = "";
     private String email = "";
     private String phone = "";
+    private String avatarUrl = "";
     private String registrationDateText = "";
 
     private ApiService apiService;
@@ -53,6 +56,7 @@ public class ProfileActivity extends AppCompatActivity {
     private String authToken;
 
     private boolean viewsInitialized = false;
+    private boolean isProfileJustUpdated = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -79,6 +83,9 @@ public class ProfileActivity extends AppCompatActivity {
         toolbar = findViewById(R.id.toolbar);
         backButton = findViewById(R.id.backButton);
         moreOptionsButton = findViewById(R.id.moreOptionsButton);
+
+        avatarContainer = findViewById(R.id.avatarContainer);
+        profileAvatar = findViewById(R.id.profileAvatar);
 
         userName = findViewById(R.id.userName);
         userUsername = findViewById(R.id.userUsername);
@@ -126,13 +133,18 @@ public class ProfileActivity extends AppCompatActivity {
             handle = "@user";
         }
 
-        displayName = prefs.getString(Constants.KEY_DISPLAY_NAME, username);
         email = prefs.getString(Constants.KEY_EMAIL, "");
         phone = prefs.getString(Constants.KEY_PHONE, "");
+        avatarUrl = prefs.getString(Constants.KEY_AVATAR, "");
         registrationDateText = prefs.getString(Constants.KEY_REGISTRATION_DATE, "Неизвестно");
     }
 
     private void fetchUserProfileFromServer() {
+        if (isProfileJustUpdated) {
+            isProfileJustUpdated = false;
+            return;
+        }
+
         if (authToken == null || authToken.isEmpty() || currentUserId <= 0) {
             return;
         }
@@ -164,18 +176,14 @@ public class ProfileActivity extends AppCompatActivity {
             handle = "@user";
         }
 
-        String rawDisplayName = getStringField(userData, "displayName");
-        if (!rawDisplayName.isEmpty()) {
-            displayName = rawDisplayName;
-        } else {
-            displayName = username;
-        }
-
         email = getStringField(userData, "email");
 
         phone = getStringField(userData, "phone");
         if (phone.isEmpty()) phone = getStringField(userData, "phoneNumber");
         if (phone.isEmpty()) phone = getStringField(userData, "mobile");
+
+        avatarUrl = getStringField(userData, "avatarUrl");
+        if (avatarUrl == null) avatarUrl = "";
 
         String createdAt = getStringField(userData, "createdAt");
         registrationDateText = formatDate(createdAt);
@@ -204,9 +212,10 @@ public class ProfileActivity extends AppCompatActivity {
     private void saveToSharedPreferences() {
         getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).edit()
                 .putString(Constants.KEY_USERNAME, username)
-                .putString(Constants.KEY_DISPLAY_NAME, displayName)
+                .putString(Constants.KEY_DISPLAY_NAME, username)
                 .putString(Constants.KEY_EMAIL, email)
                 .putString(Constants.KEY_PHONE, phone)
+                .putString(Constants.KEY_AVATAR, avatarUrl)
                 .putString(Constants.KEY_REGISTRATION_DATE, registrationDateText)
                 .apply();
     }
@@ -218,7 +227,7 @@ public class ProfileActivity extends AppCompatActivity {
 
         runOnUiThread(() -> {
             if (userName != null) {
-                userName.setText(displayName);
+                userName.setText(username);
                 userName.setTextSize(24);
                 userName.setTextColor(getColor(R.color.text_primary));
             }
@@ -236,24 +245,33 @@ public class ProfileActivity extends AppCompatActivity {
             if (registrationDate != null) {
                 registrationDate.setText(registrationDateText);
             }
+            if (profileAvatar != null) {
+                loadAvatar(avatarUrl);
+            }
         });
+    }
+
+    private void loadAvatar(String url) {
+        if (profileAvatar == null) return;
+
+        if (url != null && !url.isEmpty() && url.startsWith("http")) {
+            Glide.with(this)
+                    .load(url.trim())
+                    .placeholder(R.drawable.bg_avatar_placeholder)
+                    .error(R.drawable.bg_avatar_placeholder)
+                    .circleCrop()
+                    .into(profileAvatar);
+        } else {
+            profileAvatar.setImageResource(R.drawable.bg_avatar_placeholder);
+        }
     }
 
     private void setupListeners() {
         backButton.setOnClickListener(v -> onBackPressed());
         moreOptionsButton.setOnClickListener(v -> showOptionsMenu());
 
-        emailCard.setOnClickListener(v -> {
-            if (!email.isEmpty()) {
-                Toast.makeText(this, "Редактирование Email", Toast.LENGTH_SHORT).show();
-            }
-        });
-
-        phoneCard.setOnClickListener(v -> {
-            if (!phone.isEmpty() && !"Не указан".equals(phone)) {
-                Toast.makeText(this, "Редактирование телефона", Toast.LENGTH_SHORT).show();
-            }
-        });
+        emailCard.setOnClickListener(v -> openEditProfile());
+        phoneCard.setOnClickListener(v -> openEditProfile());
 
         registrationCard.setOnClickListener(v ->
                 Toast.makeText(this, "Дата регистрации: " + registrationDateText, Toast.LENGTH_SHORT).show()
@@ -264,10 +282,10 @@ public class ProfileActivity extends AppCompatActivity {
 
     private void openEditProfile() {
         Intent intent = new Intent(this, EditProfileActivity.class);
-        intent.putExtra(Constants.KEY_DISPLAY_NAME, displayName);
+        intent.putExtra(Constants.KEY_DISPLAY_NAME, username);
         intent.putExtra(Constants.KEY_PHONE, phone);
-        intent.putExtra(Constants.KEY_AVATAR, "");
         intent.putExtra(Constants.KEY_EMAIL, email);
+        intent.putExtra(Constants.KEY_AVATAR, avatarUrl);
 
         startActivityForResult(intent, Constants.REQUEST_EDIT_PROFILE);
         overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right);
@@ -308,6 +326,7 @@ public class ProfileActivity extends AppCompatActivity {
         super.onBackPressed();
         overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right);
     }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -318,23 +337,37 @@ public class ProfileActivity extends AppCompatActivity {
             String newAvatar = data.getStringExtra(Constants.KEY_AVATAR);
             String newEmail = data.getStringExtra(Constants.KEY_EMAIL);
 
-            if (newDisplayName != null) displayName = newDisplayName;
+            if (newDisplayName != null) {
+                username = newDisplayName.startsWith("@") ? newDisplayName.substring(1) : newDisplayName;
+                handle = newDisplayName.startsWith("@") ? newDisplayName : "@" + newDisplayName;
+            }
             if (newPhone != null) phone = newPhone;
             if (newEmail != null) email = newEmail;
 
+            String avatarToSave = newAvatar != null && !newAvatar.isEmpty() ? newAvatar : avatarUrl;
+
             getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).edit()
-                    .putString(Constants.KEY_DISPLAY_NAME, displayName)
+                    .putString(Constants.KEY_USERNAME, username)
+                    .putString(Constants.KEY_DISPLAY_NAME, username)
                     .putString(Constants.KEY_PHONE, phone)
-                    .putString(Constants.KEY_AVATAR, newAvatar)
                     .putString(Constants.KEY_EMAIL, email)
+                    .putString(Constants.KEY_AVATAR, avatarToSave)
                     .apply();
 
             updateProfileUI();
+
+            if (newAvatar != null && !newAvatar.isEmpty()) {
+                loadAvatar(newAvatar);
+            }
+
             Toast.makeText(this, "✅ Данные обновлены", Toast.LENGTH_SHORT).show();
+
+            isProfileJustUpdated = true;
         }
     }
 
     public void forceRefreshProfile() {
+        isProfileJustUpdated = false;
         fetchUserProfileFromServer();
     }
 }
