@@ -1,9 +1,17 @@
 package com.example.messenger.media;
 
+import android.Manifest;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.drawable.Drawable;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
@@ -11,19 +19,24 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
 
-import com.bumptech.glide.Glide;
-import com.bumptech.glide.load.DataSource;
-import com.bumptech.glide.load.engine.DiskCacheStrategy;
-import com.bumptech.glide.load.engine.GlideException;
-import com.bumptech.glide.request.RequestListener;
-import com.bumptech.glide.request.target.Target;
 import com.example.messenger.R;
+import com.example.messenger.data.api.RetrofitClient;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -36,6 +49,7 @@ public class MediaViewerActivity extends AppCompatActivity {
     private static final String EXTRA_MEDIA_ITEMS = "media_items";
     private static final String EXTRA_POSITION = "position";
     private static final String EXTRA_CHAT_ID = "chat_id";
+    private static final int PERMISSION_REQUEST_CODE = 1001;
 
     private ViewPager2 viewPager;
     private TextView positionIndicator;
@@ -79,7 +93,6 @@ public class MediaViewerActivity extends AppCompatActivity {
         initViews();
         setupViewPager();
         setupClickListeners();
-
     }
 
     private void initViews() {
@@ -161,19 +174,186 @@ public class MediaViewerActivity extends AppCompatActivity {
     }
 
     private void showMediaMenu() {
-        Toast.makeText(this, "Меню медиа", Toast.LENGTH_SHORT).show();
+        new AlertDialog.Builder(this)
+                .setTitle("Меню")
+                .setItems(new String[]{"Скачать", "Поделиться", "Удалить"}, (dialog, which) -> {
+                    if (which == 0) downloadCurrentMedia();
+                    else if (which == 1) shareCurrentMedia();
+                })
+                .show();
     }
 
     private void downloadCurrentMedia() {
         MediaItem item = mediaItems.get(currentPosition);
-        Toast.makeText(this, "Скачивание: " + item.getFileName(), Toast.LENGTH_SHORT).show();
+
+
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},
+                        PERMISSION_REQUEST_CODE);
+                return;
+            }
+        }
+
+        downloadMediaToGallery(item);
+    }
+
+    private void downloadMediaToGallery(MediaItem item) {
+        progressBar.setVisibility(View.VISIBLE);
+        Toast.makeText(this, "Начинаю загрузку...", Toast.LENGTH_SHORT).show();
+
+        new Thread(() -> {
+            try {
+                String url = item.getUrl();
+                if (url == null || url.isEmpty()) {
+                    runOnUiThread(() -> {
+                        progressBar.setVisibility(View.GONE);
+                        Toast.makeText(this, "Ошибка: URL пуст", Toast.LENGTH_SHORT).show();
+                    });
+                    return;
+                }
+
+                String imageUrl = url.startsWith("http") ? url : "https://storage.yandexcloud.net" + url;
+
+                Log.d(TAG, "📥 Downloading from: " + imageUrl);
+
+
+                HttpURLConnection connection = null;
+                InputStream inputStream = null;
+
+                try {
+                    URL downloadUrl = new URL(imageUrl);
+                    connection = (HttpURLConnection) downloadUrl.openConnection();
+                    connection.setRequestMethod("GET");
+                    connection.setConnectTimeout(30000);
+                    connection.setReadTimeout(30000);
+                    connection.connect();
+
+                    int responseCode = connection.getResponseCode();
+                    Log.d(TAG, "📥 Response code: " + responseCode);
+
+                    if (responseCode != HttpURLConnection.HTTP_OK) {
+                        throw new Exception("HTTP error: " + responseCode);
+                    }
+
+                    inputStream = connection.getInputStream();
+                    Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+
+                    if (bitmap == null) {
+                        throw new Exception("Failed to decode bitmap");
+                    }
+
+
+                    boolean saved = saveImageToGallery(bitmap, item.getFileName());
+
+                    runOnUiThread(() -> {
+                        progressBar.setVisibility(View.GONE);
+                        if (saved) {
+                            Toast.makeText(this, "✅ Изображение сохранено в галерею", Toast.LENGTH_LONG).show();
+                        } else {
+                            Toast.makeText(this, "❌ Ошибка сохранения", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+
+                } finally {
+                    if (inputStream != null) {
+                        try { inputStream.close(); } catch (Exception e) { }
+                    }
+                    if (connection != null) {
+                        connection.disconnect();
+                    }
+                }
+
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Download error: " + e.getMessage(), e);
+                runOnUiThread(() -> {
+                    progressBar.setVisibility(View.GONE);
+                    Toast.makeText(this, "❌ Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                });
+            }
+        }).start();
+    }
+
+    private boolean saveImageToGallery(Bitmap bitmap, String fileName) {
+        try {
+            // Для Android 10+ используем MediaStore
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName != null ? fileName : "image_" + System.currentTimeMillis() + ".jpg");
+                values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+                values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Messenger");
+                values.put(MediaStore.Images.Media.IS_PENDING, 1);
+
+                Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+
+                if (uri != null) {
+                    OutputStream outputStream = getContentResolver().openOutputStream(uri);
+                    if (outputStream != null) {
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream);
+                        outputStream.close();
+
+
+                        values.clear();
+                        values.put(MediaStore.Images.Media.IS_PENDING, 0);
+                        getContentResolver().update(uri, values, null, null);
+
+                        Log.d(TAG, "✅ Image saved to: " + uri);
+                        return true;
+                    }
+                }
+            } else {
+                // Для Android 9 и ниже
+                File picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
+                File messengerDir = new File(picturesDir, "Messenger");
+
+                if (!messengerDir.exists()) {
+                    messengerDir.mkdirs();
+                }
+
+                String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+                String finalFileName = fileName != null ? fileName : "image_" + timestamp + ".jpg";
+                File imageFile = new File(messengerDir, finalFileName);
+
+                FileOutputStream outputStream = new FileOutputStream(imageFile);
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream);
+                outputStream.flush();
+                outputStream.close();
+
+                Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+                Uri contentUri = Uri.fromFile(imageFile);
+                mediaScanIntent.setData(contentUri);
+                sendBroadcast(mediaScanIntent);
+
+                Log.d(TAG, "✅ Image saved to: " + imageFile.getAbsolutePath());
+                return true;
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error saving image: " + e.getMessage(), e);
+        }
+
+        return false;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                downloadCurrentMedia();
+            } else {
+                Toast.makeText(this, "❌ Требуется разрешение для сохранения", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 
     private void shareCurrentMedia() {
         MediaItem item = mediaItems.get(currentPosition);
         Toast.makeText(this, "Поделиться: " + item.getFileName(), Toast.LENGTH_SHORT).show();
-    }
 
+    }
 
     private static class MediaPagerAdapter extends RecyclerView.Adapter<MediaViewHolder> {
         private final List<MediaItem> items;
@@ -200,8 +380,6 @@ public class MediaViewerActivity extends AppCompatActivity {
         }
     }
 
-
-
     private static class MediaViewHolder extends RecyclerView.ViewHolder {
         private final ImageView imageView;
         private final ProgressBar loadingProgress;
@@ -214,100 +392,72 @@ public class MediaViewerActivity extends AppCompatActivity {
         }
 
         public void bind(MediaItem item) {
-            Log.d(TAG, "🖼️ bind() STARTED | pos=" + getAdapterPosition() +
-                    ", file='" + item.getFileName() + "'");
+            Log.d(TAG, "🖼️ bind() STARTED | pos=" + getAdapterPosition());
 
             try {
                 String url = item.getUrl();
-                Log.d(TAG, "   └─ URL from item: '" + url + "'");
-
                 if (url == null || url.isEmpty()) {
-                    Log.e(TAG, "❌ URL is null or empty!");
                     showImageError();
                     return;
                 }
 
+                String imageUrl = url.startsWith("http") ? url : "https://storage.yandexcloud.net" + url;
 
-                final String imageUrl = url.startsWith("http")
-                        ? url
-                        : "https://storage.yandexcloud.net" + url;
-
-                Log.d(TAG, "   └─ Final imageUrl: " + imageUrl);
-
-                Log.d(TAG, "🔄 Showing loading indicator");
                 loadingProgress.setVisibility(View.VISIBLE);
                 imageView.setVisibility(View.GONE);
                 imageView.setImageDrawable(null);
 
-
-                Log.d(TAG, "🌐 Starting direct OkHttp download...");
-
                 new Thread(() -> {
                     try {
-                        String token = com.example.messenger.data.api.RetrofitClient.getToken();
-                        Log.d(TAG, "🔑 Token: " + (token != null ? token.substring(0, 20) + "..." : "NULL"));
+                        HttpURLConnection connection = null;
+                        InputStream inputStream = null;
 
+                        try {
+                            URL downloadUrl = new URL(imageUrl);
+                            connection = (HttpURLConnection) downloadUrl.openConnection();
+                            connection.setRequestMethod("GET");
+                            connection.setConnectTimeout(30000);
+                            connection.setReadTimeout(30000);
+                            connection.connect();
 
-                        okhttp3.Request request = new okhttp3.Request.Builder()
-                                .url(imageUrl)
-                                .addHeader("Authorization", "Bearer " + (token != null ? token : ""))
-                                .build();
+                            if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                                inputStream = connection.getInputStream();
+                                Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
 
-                        Log.d(TAG, "📤 Sending request to: " + imageUrl);
-
-
-                        okhttp3.Response response = new okhttp3.OkHttpClient.Builder()
-                                .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                                .build()
-                                .newCall(request)
-                                .execute();
-
-                        Log.d(TAG, "📥 Response code: " + response.code());
-
-                        if (response.isSuccessful() && response.body() != null) {
-
-                            android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeStream(
-                                    response.body().byteStream());
-
-                            if (bitmap != null) {
-                                Log.d(TAG, "✅ Bitmap decoded: " + bitmap.getWidth() + "x" + bitmap.getHeight());
-
-
-                                itemView.post(() -> {
-                                    loadingProgress.setVisibility(View.GONE);
-                                    imageView.setImageBitmap(bitmap);
-                                    imageView.setVisibility(View.VISIBLE);
-                                    imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                                    Log.d(TAG, "🖼️ Bitmap set to ImageView");
-                                });
+                                if (bitmap != null) {
+                                    itemView.post(() -> {
+                                        loadingProgress.setVisibility(View.GONE);
+                                        imageView.setImageBitmap(bitmap);
+                                        imageView.setVisibility(View.VISIBLE);
+                                        imageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                                    });
+                                } else {
+                                    itemView.post(this::showImageError);
+                                }
                             } else {
-                                Log.e(TAG, "❌ Failed to decode bitmap");
                                 itemView.post(this::showImageError);
                             }
-                        } else {
-                            Log.e(TAG, "❌ HTTP error: " + response.code() + " - " + response.message());
-                            itemView.post(this::showImageError);
+                        } finally {
+                            if (inputStream != null) {
+                                try { inputStream.close(); } catch (Exception e) { }
+                            }
+                            if (connection != null) {
+                                connection.disconnect();
+                            }
                         }
-
-                        response.close();
-
                     } catch (Exception e) {
-                        Log.e(TAG, "❌ Download failed: " + e.getMessage(), e);
+                        Log.e(TAG, "❌ Download failed: " + e.getMessage());
                         itemView.post(this::showImageError);
                     }
                 }).start();
 
-                Log.d(TAG, "✅ bind() COMPLETED (async download started)");
-
             } catch (Exception e) {
-                Log.e(TAG, "💥 EXCEPTION in bind(): " + e.getMessage(), e);
+                Log.e(TAG, "💥 EXCEPTION: " + e.getMessage());
                 showImageError();
             }
         }
 
         private void showImageError() {
-            Log.d(TAG, "🖼️ showImageError() called");
             loadingProgress.setVisibility(View.GONE);
             imageView.setImageResource(android.R.drawable.ic_menu_report_image);
             imageView.setVisibility(View.VISIBLE);

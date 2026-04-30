@@ -173,19 +173,24 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
         return -1;
     }
 
-    public void updateImageMessage(long tempId, long serverId, String imageUrl, int newStatus) {
-        int pos = findMessagePosition(tempId);
-        if (pos != -1) {
-            MessageItem msg = items.get(pos);
-            msg.setId(serverId);
-            msg.setImageUrl(imageUrl);
-            msg.setStatus(newStatus);
-            msg.setUploadProgress(100);
-            notifyItemChanged(pos);
-            Log.d(TAG, "✅ Updated image message: " + serverId);
-        } else {
-            Log.w(TAG, "⚠️ Message with tempId " + tempId + " not found");
+    public void updateImageMessage(long tempId, long realId, String fileUrl, int status) {
+        List<MessageItem> items = getItems();
+        for (int i = 0; i < items.size(); i++) {
+            MessageItem item = items.get(i);
+            if (item.getId() == tempId) {
+                item.setId(realId);
+                item.setImageUrl(fileUrl);
+                item.setStatus(status);
+
+                if (item.getMessageType() != MessageType.IMAGE) {
+                    item.setMessageType(MessageType.IMAGE);
+                }
+                notifyItemChanged(i);
+                Log.d(TAG, "✅ Updated image message: " + realId);
+                return;
+            }
         }
+        Log.w(TAG, "⚠️ Image message not found for tempId: " + tempId);
     }
 
     public void updateMessageStatus(long tempId, int newStatus) {

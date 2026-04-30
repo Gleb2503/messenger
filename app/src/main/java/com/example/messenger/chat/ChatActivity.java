@@ -232,11 +232,9 @@ public class ChatActivity extends AppCompatActivity {
 
         messageAdapter = new MessageAdapter();
 
-
         messageAdapter.setOnMediaViewerListener((mediaItems, position) -> {
             MediaViewerActivity.start(ChatActivity.this, mediaItems, position, chatId);
         });
-
 
         messageAdapter.setOnMediaClickListener((url, type) -> openMediaViewer(url, type));
 
@@ -352,7 +350,6 @@ public class ChatActivity extends AppCompatActivity {
             Log.d(TAG, "📡 Subscribed to personal queue: " + personalQueue);
         }
 
-
         stompClient.subscribe("/topic/message/status", payload -> {
             if (isFinishing() || isDestroyed()) return;
 
@@ -385,15 +382,12 @@ public class ChatActivity extends AppCompatActivity {
 
                 if (messageId != null && newStatus != null) {
                     int status = parseStatus(newStatus);
-
-
                     boolean updated = messageAdapter.updateItemStatus(messageId, status);
 
                     if (updated) {
                         Log.d(TAG, "✓✓ UI updated for message " + messageId);
                     } else {
                         Log.w(TAG, "⚠️ Message " + messageId + " not found in adapter, trying to reload...");
-
                     }
                 }
             }
@@ -533,28 +527,25 @@ public class ChatActivity extends AppCompatActivity {
                         ", type=" + (type == MessageItem.TYPE_OUTGOING ? "OUT" : "IN") +
                         ", messageType=" + messageType);
 
-
                 if (type == MessageItem.TYPE_OUTGOING) {
                     List<MessageItem> items = messageAdapter.getItems();
                     for (int i = items.size() - 1; i >= 0; i--) {
                         MessageItem item = items.get(i);
-
 
                         boolean isOptimistic = item.getType() == MessageItem.TYPE_OUTGOING &&
                                 item.getStatus() == MessageItem.STATUS_SENT &&
                                 item.getSenderId() == currentUserId;
 
                         if (isOptimistic) {
-
                             boolean textMatch = messageType == MessageType.TEXT && item.getText().equals(text);
                             boolean fileMatch = messageType != MessageType.TEXT &&
                                     item.getMessageType() == messageType;
+                            boolean idMatch = item.getId() < 0;
 
-                            if (textMatch || fileMatch) {
+                            if (textMatch || fileMatch || idMatch) {
                                 Log.d(TAG, "🔄 Found optimistic message, updating with real ID: " + realId);
                                 item.setId(realId);
                                 item.setStatus(status);
-
 
                                 if (fileUrl != null && !fileUrl.isEmpty()) {
                                     item.setImageUrl(fileUrl);
@@ -573,7 +564,6 @@ public class ChatActivity extends AppCompatActivity {
                             ", messageType=" + messageType);
                 }
 
-
                 MessageItem newItem = new MessageItem(realId, text, time, status, type, senderId, messageType, null);
                 if (fileUrl != null && !fileUrl.isEmpty()) {
                     newItem.setImageUrl(fileUrl);
@@ -585,7 +575,6 @@ public class ChatActivity extends AppCompatActivity {
                 showState(State.CONTENT);
                 scrollToBottom();
                 Log.d(TAG, "➕ Added new message with id=" + realId + ", hasAttachment=" + (fileUrl != null));
-
 
                 if (senderId != currentUserId && stompClient != null && stompClient.isConnected()) {
                     Log.d(TAG, "📤 Auto-sending message.read for messageId=" + realId);
@@ -795,7 +784,6 @@ public class ChatActivity extends AppCompatActivity {
         }
     }
 
-
     private void sendImageMessage(Uri imageUri) {
         if (imageUri == null) {
             Toast.makeText(this, "Ошибка выбора изображения", Toast.LENGTH_SHORT).show();
@@ -822,7 +810,7 @@ public class ChatActivity extends AppCompatActivity {
             @Override
             public void onResponse(Call<Long> call, Response<Long> response) {
                 if (response.isSuccessful() && response.body() != null) {
-                    Long realMessageId = response.body();  // ✅ Реальный положительный ID!
+                    Long realMessageId = response.body();
                     Log.d(TAG, "✅ Message created on server, real ID: " + realMessageId);
 
 
@@ -831,7 +819,9 @@ public class ChatActivity extends AppCompatActivity {
                         try {
                             compressed = ImageUtils.compressImage(ChatActivity.this, imageUri);
 
+
                             sendImageViaRest(compressed, realMessageId, chatId, tempId);
+
                         } catch (Exception e) {
                             Log.e(TAG, "Error preparing image", e);
                             runOnUiThread(() -> {
@@ -843,6 +833,7 @@ public class ChatActivity extends AppCompatActivity {
                             }
                         }
                     }).start();
+
                 } else {
                     Log.e(TAG, "❌ Failed to create message on server");
                     runOnUiThread(() -> {
@@ -863,11 +854,10 @@ public class ChatActivity extends AppCompatActivity {
         });
     }
 
-
     private void createEmptyMessageOnServer(long chatId, String messageType, Callback<Long> callback) {
         Map<String, Object> request = new HashMap<>();
         request.put("chatId", chatId);
-        request.put("content", "");  // Пустой текст для изображения
+        request.put("content", "");
         request.put("messageType", messageType);
 
         apiService.sendMessage(chatId, request).enqueue(new Callback<Map<String, Object>>() {
@@ -877,18 +867,15 @@ public class ChatActivity extends AppCompatActivity {
                     Object idObj = response.body().get("id");
                     if (idObj instanceof Number) {
                         Long realId = ((Number) idObj).longValue();
-
                         callback.onResponse(null, Response.success(realId));
                         return;
                     }
                 }
-
                 callback.onFailure(null, new Exception("Failed to get message ID"));
             }
 
             @Override
             public void onFailure(Call<Map<String, Object>> call, Throwable t) {
-
                 callback.onFailure(null, t);
             }
         });
@@ -901,7 +888,6 @@ public class ChatActivity extends AppCompatActivity {
         }
         return android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP);
     }
-
 
     private void sendImageViaRest(File imageFile, long messageId, long chatId, long tempId) {
         String fileName = imageFile.getName();
@@ -921,7 +907,7 @@ public class ChatActivity extends AppCompatActivity {
 
         apiService.uploadAttachment(
                 filePart,
-                messageId,  // ✅ Теперь это реальный положительный ID из БД!
+                messageId,
                 fileName,
                 fileSize,
                 fileType,
@@ -931,15 +917,40 @@ public class ChatActivity extends AppCompatActivity {
             public void onResponse(Call<AttachmentResponse> call, Response<AttachmentResponse> response) {
                 if (response.isSuccessful() && response.body() != null) {
                     AttachmentResponse result = response.body();
+
+                    Map<String, Object> attachment = new HashMap<>();
+                    attachment.put("id", result.id);
+                    attachment.put("fileUrl", result.fileUrl);
+                    attachment.put("fileName", result.fileName);
+                    attachment.put("fileSize", result.fileSize);
+                    attachment.put("fileType", result.fileType);
+                    attachment.put("thumbnailUrl", result.thumbnailUrl);
+                    attachment.put("createdAt", result.createdAt);
+
+                    List<Map<String, Object>> attachmentsList = new ArrayList<>();
+                    attachmentsList.add(attachment);
+
                     runOnUiThread(() -> {
-                        // ✅ Обновляем сообщение по tempId, подставляя реальные данные
                         messageAdapter.updateImageMessage(
-                                tempId,  // ищем по временному ID
+                                tempId,
                                 result.id,
                                 result.fileUrl,
                                 MessageItem.STATUS_SENT
                         );
                         Log.d(TAG, "✅ Attachment uploaded: " + result.fileUrl);
+
+                        String createdAt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+                                .format(new Date());
+
+                        broadcastMessageViaWebSocket(
+                                messageId,
+                                "",
+                                createdAt,
+                                getCurrentUserId(),
+                                MessageItem.STATUS_SENT,
+                                MessageType.IMAGE,
+                                attachmentsList
+                        );
                     });
                 } else {
                     Log.e(TAG, "❌ Upload failed: " + response.code() + " - " + response.message());
@@ -966,6 +977,112 @@ public class ChatActivity extends AppCompatActivity {
             }
         });
     }
+    private void broadcastImageMessage(long messageId, AttachmentResponse attachment, long chatId) {
+        if (stompClient == null || !stompClient.isConnected()) {
+            Log.w(TAG, "⚠️ Cannot broadcast: WebSocket not connected");
+            return;
+        }
+
+
+        Map<String, Object> messagePayload = new HashMap<>();
+        messagePayload.put("id", messageId);
+        messagePayload.put("chatId", chatId);
+        messagePayload.put("senderId", getCurrentUserId());
+        messagePayload.put("text", "");
+        messagePayload.put("messageType", "image");
+        messagePayload.put("status", "sent");
+        messagePayload.put("createdAt", java.time.Instant.now().toString());
+
+
+        List<Map<String, Object>> attachments = new ArrayList<>();
+        Map<String, Object> attachmentData = new HashMap<>();
+        attachmentData.put("id", attachment.id);
+        attachmentData.put("fileUrl", attachment.fileUrl);
+        attachmentData.put("fileName", attachment.fileName);
+        attachmentData.put("fileSize", attachment.fileSize);
+        attachmentData.put("fileType", attachment.fileType);
+        attachmentData.put("thumbnailUrl", attachment.thumbnailUrl);
+        attachments.add(attachmentData);
+
+        messagePayload.put("attachments", attachments);
+
+
+        String destination = "/app/chat." + chatId + ".send";
+        Log.d(TAG, "📤 Broadcasting image via WebSocket to " + destination);
+        stompClient.send(destination, messagePayload);
+    }
+
+
+
+
+    private void broadcastImageMessageViaWebSocket(long messageId, AttachmentResponse attachment, long senderId) {
+        if (stompClient == null || !stompClient.isConnected()) {
+            Log.w(TAG, "⚠️ WebSocket not connected, skipping broadcast");
+            return;
+        }
+
+        Map<String, Object> messagePayload = new HashMap<>();
+        messagePayload.put("id", messageId);
+        messagePayload.put("chatId", chatId);
+        messagePayload.put("senderId", senderId);
+        messagePayload.put("text", "");
+        messagePayload.put("messageType", "image");
+        messagePayload.put("status", "sent");
+        messagePayload.put("createdAt", java.time.Instant.now().toString());
+
+
+        List<Map<String, Object>> attachments = new ArrayList<>();
+        Map<String, Object> att = new HashMap<>();
+        att.put("id", attachment.id);
+        att.put("fileUrl", attachment.fileUrl);
+        att.put("fileName", attachment.fileName);
+        att.put("fileSize", attachment.fileSize);
+        att.put("fileType", attachment.fileType);
+        attachments.add(att);
+        messagePayload.put("attachments", attachments);
+
+        Log.d(TAG, "📡 Broadcasting image message via WS: " + messageId);
+        stompClient.send("/app/chat.message", messagePayload);
+    }
+
+    private void broadcastMessageViaWebSocket(long messageId, String text, String createdAt,
+                                              long senderId, int status, MessageType messageType,
+                                              List<Map<String, Object>> attachments) {
+        if (stompClient == null || !stompClient.isConnected()) {
+            Log.w(TAG, "⚠️ Cannot broadcast: WebSocket not connected");
+            return;
+        }
+
+        Map<String, Object> messagePayload = new HashMap<>();
+        messagePayload.put("id", messageId);
+        messagePayload.put("text", text != null ? text : "");
+        messagePayload.put("createdAt", createdAt);
+        messagePayload.put("senderId", senderId);
+        messagePayload.put("status", parseStatusToString(status));
+        messagePayload.put("messageType", messageType != null ? messageType.name().toLowerCase() : "text");
+        messagePayload.put("chatId", chatId);
+
+        if (attachments != null && !attachments.isEmpty()) {
+            messagePayload.put("attachments", attachments);
+        }
+
+        String destination = "/app/chat." + chatId + ".send";
+        Log.d(TAG, "📤 Broadcasting message via WebSocket to " + destination);
+        stompClient.send(destination, messagePayload);
+    }
+
+    private String parseStatusToString(int status) {
+        switch (status) {
+            case MessageItem.STATUS_READ: return "read";
+            case MessageItem.STATUS_DELIVERED: return "delivered";
+            case MessageItem.STATUS_SENT: return "sent";
+            case MessageItem.STATUS_SENDING: return "sending";
+            case MessageItem.STATUS_FAILED: return "failed";
+            default: return "sent";
+        }
+    }
+
+
 
     private void sendViaRest(String text) {
         Map<String, Object> request = new HashMap<>();
@@ -1032,5 +1149,10 @@ public class ChatActivity extends AppCompatActivity {
         boolean isContent = (state == State.CONTENT);
         messagesRecyclerView.setVisibility(isContent ? View.VISIBLE : View.GONE);
         emptyState.setVisibility(state == State.EMPTY ? View.VISIBLE : View.GONE);
+    }
+
+    private interface UploadCallback {
+        void onSuccess(AttachmentResponse attachment);
+        void onError(String error);
     }
 }

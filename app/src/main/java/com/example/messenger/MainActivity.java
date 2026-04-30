@@ -27,6 +27,7 @@ import com.example.messenger.chat.ChatItem;
 import com.example.messenger.login.LoginActivity;
 import com.example.messenger.data.api.ApiService;
 import com.example.messenger.data.api.RetrofitClient;
+import com.example.messenger.profile.ProfileActivity;
 import com.example.messenger.util.Constants;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textfield.TextInputEditText;
@@ -143,7 +144,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupClickListeners() {
-        findViewById(R.id.profileIcon).setOnClickListener(v -> logoutAndGoToLogin());
+        findViewById(R.id.profileIcon).setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, ProfileActivity.class);
+            startActivity(intent);
+
+            overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right);
+        });
         findViewById(R.id.menuIcon).setOnClickListener(v -> showMenuDialog());
         findViewById(R.id.createChatButton).setOnClickListener(v -> showCreateChatDialog());
         findViewById(R.id.addContactButton).setOnClickListener(v ->
@@ -495,12 +501,29 @@ public class MainActivity extends AppCompatActivity {
 
     private void showMenuDialog() {
         String[] items = {"Настройки", "Профиль", "Выйти"};
+
+
         new AlertDialog.Builder(this)
                 .setTitle("Меню")
                 .setItems(items, (dialog, which) -> {
                     switch (which) {
-                        case 3: logoutAndGoToLogin(); break;
-                        default: Toast.makeText(this, items[which], Toast.LENGTH_SHORT).show();
+                        case 0:
+                            Toast.makeText(this, "Настройки", Toast.LENGTH_SHORT).show();
+
+                            break;
+
+                        case 1:
+                            Intent profileIntent = new Intent(MainActivity.this, ProfileActivity.class);
+                            startActivity(profileIntent);
+                            break;
+
+                        case 2:
+                            logoutAndGoToLogin();
+                            break;
+
+                        default:
+                            Toast.makeText(this, "Неизвестный пункт: " + which, Toast.LENGTH_SHORT).show();
+                            break;
                     }
                 })
                 .show();

@@ -16,6 +16,7 @@ import retrofit2.http.GET;
 import retrofit2.http.Multipart;
 import retrofit2.http.PATCH;
 import retrofit2.http.POST;
+import retrofit2.http.PUT;
 import retrofit2.http.Part;
 import retrofit2.http.Path;
 
@@ -64,5 +65,15 @@ public interface ApiService {
 
     @GET("attachments/{id}/download")
     Call<okhttp3.ResponseBody> downloadAttachment(@Path("id") Long id);
+    @GET("/api/users/{userId}")
+    Call<Map<String, Object>> getUserProfile(@Path("userId") long userId);
+    @PUT("/api/users/{userId}")
+    Call<Map<String, Object>> updateUser(
+            @Path("userId") Long userId,
+            @Body Map<String, Object> request
+    );
+
+
+
 
 }

@@ -52,6 +52,10 @@
     <style name="TextAppearance.Messenger.Body.Secondary" parent="TextAppearance.Material3.BodyMedium">
         <item name="android:textColor">@color/text_secondary</item>
     </style>
+    <style name="CircleImageView" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
 
     <style name="TextAppearance.Messenger.Caption" parent="TextAppearance.Material3.LabelSmall">
         <item name="android:textColor">@color/text_tertiary</item>

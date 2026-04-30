@@ -1,6 +1,7 @@
 <resources>
     <string name="app_name">messenger</string>
 
+
     <string name="hint_username">Email или имя пользователя</string>
     <string name="hint_password">Пароль</string>
     <string name="btn_login">Войти</string>
@@ -12,7 +13,6 @@
     <string name="error_invalid_credentials">Неверный логин или пароль</string>
     <string name="error_network">Ошибка сети. Проверьте подключение</string>
     <string name="error_unknown">Произошла ошибка. Попробуйте позже</string>
-
     <string name="loading">Вход...</string>
     <string name="hint_usernames">Имя пользователя</string>
     <string name="hint_email">Email</string>
@@ -20,4 +20,36 @@
     <string name="helper_username">3-50 символов</string>
     <string name="helper_password">Минимум 6 символов</string>
     <string name="btn_registers">Зарегистрироваться</string>
+
+
+    <string name="profile_title">Профиль</string>
+    <string name="edit_profile_button">Редактировать профиль</string>
+    <string name="email_label">Email</string>
+    <string name="phone_label">Телефон</string>
+    <string name="registered_label">Зарегистрирован</string>
+
+
+    <string name="example_name">Иван Иванов</string>
+    <string name="example_username">\@ivan_dev</string>
+    <string name="example_email">ivan_dev@example.com</string>
+    <string name="example_phone">+7(910)123-45 67</string>
+    <string name="example_registration_date">15 января 2026</string>
+    <string name="edit_profile_title">Редактировать профиль</string>
+    <string name="display_name_hint">Отображаемое имя</string>
+    <string name="display_name_placeholder">Иван Иванов</string>
+    <string name="phone_hint">Номер телефона</string>
+    <string name="phone_placeholder">+7 (999) 123-45-67</string>
+    <string name="avatar_url_hint">Ссылка на аватар</string>
+
+    <string name="save_changes_button">Сохранить изменения</string>
+    <string name="email_hint">Email</string>
+    <string name="email_placeholder">example@email.com</string>
+    <string name="password_hint">Пароль</string>
+    <string name="password_placeholder">••••••••</string>
+    <string name="avatar_hint">Аватар</string>
+    <string name="avatar_change_text">📷 Выбрать из галереи</string>
+    <string name="avatar_url_placeholder">https://example.com/avatar.jpg</string>
+    <string name="avatar_uploading">Загрузка аватара…</string>
+    <string name="avatar_uploaded">✅ Аватар обновлён</string>
+    <string name="avatar_upload_error">❌ Ошибка загрузки аватара</string>
 </resources>
