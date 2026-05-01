@@ -17,10 +17,12 @@ import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.Spinner;
 import android.widget.Toast;
+
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
 import com.bumptech.glide.Glide;
 import com.example.messenger.chat.ChatActivity;
 import com.example.messenger.chat.ChatAdapter;
@@ -32,11 +34,14 @@ import com.example.messenger.profile.ProfileActivity;
 import com.example.messenger.util.Constants;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textfield.TextInputEditText;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
+
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -238,8 +243,8 @@ public class MainActivity extends AppCompatActivity {
             List<ChatItem> filtered = allChats.stream()
                     .filter(chat -> !chat.isHeader())
                     .filter(chat ->
-                            chat.getName().toLowerCase().contains(query.toLowerCase()) ||
-                                    chat.getLastMessage().toLowerCase().contains(query.toLowerCase())
+                            chat.getName().toLowerCase(Locale.getDefault()).contains(query.toLowerCase(Locale.getDefault())) ||
+                                    chat.getLastMessage().toLowerCase(Locale.getDefault()).contains(query.toLowerCase(Locale.getDefault()))
                     )
                     .collect(Collectors.toList());
             chatAdapter.submitList(filtered);
@@ -346,10 +351,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateChatAvatar(long chatId, String newAvatarUrl) {
         runOnUiThread(() -> {
-            List<ChatItem> updatedList = new ArrayList<>();
-            for (ChatItem chat : allChats) {
+            for (int i = 0; i < allChats.size(); i++) {
+                ChatItem chat = allChats.get(i);
                 if (chat.getId() == chatId && !chat.isHeader()) {
-                    updatedList.add(new ChatItem(
+                    ChatItem updated = new ChatItem(
                             chat.getId(),
                             chat.getName(),
                             chat.getLastMessage(),
@@ -358,12 +363,12 @@ public class MainActivity extends AppCompatActivity {
                             chat.isPinned(),
                             chat.getPartnerUserId(),
                             newAvatarUrl
-                    ));
-                } else {
-                    updatedList.add(chat);
+                    );
+                    allChats.set(i, updated);
+                    chatAdapter.notifyItemChanged(i);
+                    break;
                 }
             }
-            chatAdapter.submitList(updatedList);
         });
     }
 
@@ -406,6 +411,47 @@ public class MainActivity extends AppCompatActivity {
         return uiList;
     }
 
+    private String extractAvatarUrl(Map<String, Object> chat, long partnerUserId) {
+        Object avatarObj = chat.get("avatarUrl");
+        if (avatarObj instanceof String) {
+            String url = (String) avatarObj;
+            if (url != null && !url.isEmpty() && url.startsWith("http")) {
+                return url;
+            }
+        }
+
+        Object createdByObj = chat.get("createdBy");
+        if (createdByObj instanceof Map) {
+            Map<String, Object> createdBy = (Map<String, Object>) createdByObj;
+            Object createdByAvatar = createdBy.get("avatarUrl");
+            if (createdByAvatar instanceof String) {
+                String url = (String) createdByAvatar;
+                if (url != null && !url.isEmpty() && url.startsWith("http")) {
+                    return url;
+                }
+            }
+        }
+
+        if (partnerUserId > 0 && chat.containsKey("participants") && chat.get("participants") instanceof List) {
+            List<Map<String, Object>> participants = (List<Map<String, Object>>) chat.get("participants");
+            for (Map<String, Object> participant : participants) {
+                Object userIdObj = participant.get("userId");
+                if (userIdObj instanceof Number && ((Number) userIdObj).longValue() == partnerUserId) {
+                    Object participantAvatar = participant.get("avatarUrl");
+                    if (participantAvatar instanceof String) {
+                        String url = (String) participantAvatar;
+                        if (url != null && !url.isEmpty() && url.startsWith("http")) {
+                            return url;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        return "";
+    }
+
     private ChatItem mapChatToUI(Map<String, Object> chat) {
         Object pinnedObj = chat.get("pinned");
         boolean isPinned = false;
@@ -417,49 +463,29 @@ public class MainActivity extends AppCompatActivity {
             isPinned = ((Number) pinnedObj).intValue() != 0;
         }
 
-        long partnerUserId = -1;
-        String type = (String) chat.get("type");
-        if ("private_chat".equals(type)) {
-            Map<String, Object> createdBy = (Map<String, Object>) chat.get("createdBy");
-            if (createdBy != null && createdBy.get("id") != null) {
-                long createdById = ((Number) createdBy.get("id")).longValue();
-                if (createdById != currentUserId) {
-                    partnerUserId = createdById;
-                }
-            }
-        }
+        long partnerUserId = findPartnerUserId(chat, currentUserId);
 
         String avatarUrl = "";
-        if (chat.containsKey("avatarUrl") && chat.get("avatarUrl") instanceof String) {
-            avatarUrl = (String) chat.get("avatarUrl");
-        } else if (chat.containsKey("createdBy") && chat.get("createdBy") instanceof Map) {
-            Map<String, Object> createdBy = (Map<String, Object>) chat.get("createdBy");
-            if (createdBy.containsKey("avatarUrl") && createdBy.get("avatarUrl") instanceof String) {
-                avatarUrl = (String) createdBy.get("avatarUrl");
-            }
-        } else if (chat.containsKey("participants") && chat.get("participants") instanceof List) {
-            List<Map<String, Object>> participants = (List<Map<String, Object>>) chat.get("participants");
-            for (Map<String, Object> participant : participants) {
-                Object userIdObj = participant.get("userId");
-                if (userIdObj instanceof Number && ((Number) userIdObj).longValue() == partnerUserId) {
-                    if (participant.containsKey("avatarUrl") && participant.get("avatarUrl") instanceof String) {
-                        avatarUrl = (String) participant.get("avatarUrl");
-                        break;
-                    }
-                }
+        if (chat.containsKey("partner") && chat.get("partner") instanceof Map) {
+            Map<String, Object> partnerMap = (Map<String, Object>) chat.get("partner");
+            Object avatarObj = partnerMap.get("avatarUrl");
+            if (avatarObj instanceof String) {
+                avatarUrl = (String) avatarObj;
             }
         }
 
-        return new ChatItem(
-                chat.get("id") != null ? ((Number) chat.get("id")).longValue() : 0L,
-                chat.get("name") != null ? (String) chat.get("name") : "Без названия",
-                chat.get("lastMessage") != null ? (String) chat.get("lastMessage") : "Нажмите, чтобы открыть",
-                formatTime((String) chat.get("updatedAt")),
-                0,
-                isPinned,
-                partnerUserId,
-                avatarUrl
-        );
+        if (avatarUrl == null || avatarUrl.isEmpty()) {
+            avatarUrl = extractAvatarUrl(chat, partnerUserId);
+        }
+
+        long chatId = chat.get("id") != null ? ((Number) chat.get("id")).longValue() : 0L;
+        String name = chat.get("name") != null ? (String) chat.get("name") : "Без названия";
+        String lastMessage = chat.get("lastMessage") != null ? (String) chat.get("lastMessage") : "Нажмите, чтобы открыть";
+        String time = formatTime((String) chat.get("updatedAt"));
+
+        Log.d("ChatMapper", "Chat id=" + chatId + ", name=" + name + ", partnerUserId=" + partnerUserId + ", avatarUrl='" + avatarUrl + "'");
+
+        return new ChatItem(chatId, name, lastMessage, time, 0, isPinned, partnerUserId, avatarUrl);
     }
 
     private String formatTime(String isoTime) {
@@ -663,6 +689,48 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private enum State { LOADING, CONTENT, EMPTY, ERROR }
+
+    private long findPartnerUserId(Map<String, Object> chat, long currentUserId) {
+        if (chat.containsKey("partner") && chat.get("partner") instanceof Map) {
+            Map<String, Object> partnerMap = (Map<String, Object>) chat.get("partner");
+            Object partnerIdObj = partnerMap.get("id");
+            if (partnerIdObj instanceof Number) {
+                return ((Number) partnerIdObj).longValue();
+            }
+        }
+
+        if (chat.containsKey("participants") && chat.get("participants") instanceof List) {
+            List<Map<String, Object>> participants = (List<Map<String, Object>>) chat.get("participants");
+            for (Map<String, Object> participant : participants) {
+                Object userIdObj = participant.get("userId");
+                if (userIdObj instanceof Number) {
+                    long userId = ((Number) userIdObj).longValue();
+                    if (userId != currentUserId) {
+                        return userId;
+                    }
+                }
+            }
+        }
+
+        Object createdByObj = chat.get("createdBy");
+        if (createdByObj instanceof Map) {
+            Map<String, Object> createdBy = (Map<String, Object>) createdByObj;
+            Object idObj = createdBy.get("id");
+            if (idObj instanceof Number) {
+                long createdById = ((Number) idObj).longValue();
+                if (createdById != currentUserId) {
+                    return createdById;
+                }
+            }
+        }
+
+        Object chatName = chat.get("name");
+        if (chatName instanceof String && !((String) chatName).isEmpty()) {
+            Log.w(TAG, "Could not find partner userId for chat: " + chatName + ". API may not include participants array.");
+        }
+
+        return -1;
+    }
 
     private void showState(State state) {
         boolean isContent = (state == State.CONTENT);
