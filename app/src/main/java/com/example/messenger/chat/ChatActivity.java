@@ -19,6 +19,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.bumptech.glide.Glide;
 import com.example.messenger.media.MediaViewerActivity;
 import com.example.messenger.status.AppStatusManager;
 import com.example.messenger.message.MessageAdapter;
@@ -70,7 +71,7 @@ public class ChatActivity extends AppCompatActivity {
     private RecyclerView messagesRecyclerView;
     private LinearLayout emptyState, noConnectionState;
     private EditText messageInput;
-    private ImageView sendButton, backButton, menuIcon, statusIcon, attachButton;
+    private ImageView sendButton, backButton, menuIcon, statusIcon, attachButton, partnerAvatar;
     private TextView chatName, statusText;
     private Button retryButton;
 
@@ -116,6 +117,7 @@ public class ChatActivity extends AppCompatActivity {
                 Log.d(TAG, "⚠️ No cache, showing default Offline");
                 updatePartnerStatus(false);
             }
+            loadPartnerAvatar();
         }
 
         UserStatusManager statusManager = ((MessengerApplication) getApplication()).getStatusManager();
@@ -225,6 +227,7 @@ public class ChatActivity extends AppCompatActivity {
         statusText = findViewById(R.id.statusText);
         chatName = findViewById(R.id.chatName);
         retryButton = findViewById(R.id.retryButton);
+        partnerAvatar = findViewById(R.id.partnerAvatar);
 
         attachButton = findViewById(R.id.attachButton);
         chatName.setText(chatNameStr);
@@ -276,6 +279,62 @@ public class ChatActivity extends AppCompatActivity {
                 .maxResultSize(1080, 1080)
                 .galleryOnly()
                 .start(IMAGE_PICKER_REQUEST);
+    }
+
+    private void loadPartnerAvatar() {
+        if (partnerAvatar == null || partnerUserId <= 0) return;
+
+        String cachedAvatar = getSharedPreferences("messenger_prefs", MODE_PRIVATE)
+                .getString("avatar_user_" + partnerUserId, "");
+
+        if (cachedAvatar != null && !cachedAvatar.isEmpty() && cachedAvatar.startsWith("http")) {
+            loadAvatarIntoView(cachedAvatar);
+            return;
+        }
+
+        partnerAvatar.setImageResource(R.drawable.bg_logo_gradient);
+
+        if (authToken == null || authToken.isEmpty()) return;
+
+        apiService.getUserProfile(partnerUserId).enqueue(new Callback<Map<String, Object>>() {
+            @Override
+            public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    Object avatarObj = response.body().get("avatarUrl");
+                    if (avatarObj instanceof String) {
+                        String avatarUrl = (String) avatarObj;
+                        if (avatarUrl != null && !avatarUrl.isEmpty() && avatarUrl.startsWith("http")) {
+                            getSharedPreferences("messenger_prefs", MODE_PRIVATE)
+                                    .edit()
+                                    .putString("avatar_user_" + partnerUserId, avatarUrl)
+                                    .apply();
+                            if (!isFinishing() && !isDestroyed()) {
+                                runOnUiThread(() -> loadAvatarIntoView(avatarUrl));
+                            }
+                        }
+                    }
+                }
+            }
+
+            @Override
+            public void onFailure(Call<Map<String, Object>> call, Throwable t) {
+                Log.e(TAG, "Failed to fetch avatar for user " + partnerUserId, t);
+            }
+        });
+    }
+
+    private void loadAvatarIntoView(String url) {
+        if (partnerAvatar == null) return;
+        if (url != null && !url.isEmpty() && url.startsWith("http")) {
+            Glide.with(this)
+                    .load(url.trim())
+                    .placeholder(R.drawable.bg_logo_gradient)
+                    .error(R.drawable.bg_logo_gradient)
+                    .circleCrop()
+                    .into(partnerAvatar);
+        } else {
+            partnerAvatar.setImageResource(R.drawable.bg_logo_gradient);
+        }
     }
 
     private void updatePartnerStatus(boolean isOnline) {
@@ -794,7 +853,6 @@ public class ChatActivity extends AppCompatActivity {
         long currentUserId = getCurrentUserId();
         long tempId = -System.currentTimeMillis() - 1;
 
-
         MessageItem tempMsg = new MessageItem(
                 tempId, "", getCurrentTime(),
                 MessageItem.STATUS_SENDING, MessageItem.TYPE_OUTGOING,
@@ -805,7 +863,6 @@ public class ChatActivity extends AppCompatActivity {
         scrollToBottom();
         Log.d(TAG, "➕ Added optimistic image message to UI");
 
-
         createEmptyMessageOnServer(chatId, "image", new Callback<Long>() {
             @Override
             public void onResponse(Call<Long> call, Response<Long> response) {
@@ -813,13 +870,10 @@ public class ChatActivity extends AppCompatActivity {
                     Long realMessageId = response.body();
                     Log.d(TAG, "✅ Message created on server, real ID: " + realMessageId);
 
-
                     new Thread(() -> {
                         File compressed = null;
                         try {
                             compressed = ImageUtils.compressImage(ChatActivity.this, imageUri);
-
-
                             sendImageViaRest(compressed, realMessageId, chatId, tempId);
 
                         } catch (Exception e) {
@@ -977,12 +1031,12 @@ public class ChatActivity extends AppCompatActivity {
             }
         });
     }
+
     private void broadcastImageMessage(long messageId, AttachmentResponse attachment, long chatId) {
         if (stompClient == null || !stompClient.isConnected()) {
             Log.w(TAG, "⚠️ Cannot broadcast: WebSocket not connected");
             return;
         }
-
 
         Map<String, Object> messagePayload = new HashMap<>();
         messagePayload.put("id", messageId);
@@ -992,7 +1046,6 @@ public class ChatActivity extends AppCompatActivity {
         messagePayload.put("messageType", "image");
         messagePayload.put("status", "sent");
         messagePayload.put("createdAt", java.time.Instant.now().toString());
-
 
         List<Map<String, Object>> attachments = new ArrayList<>();
         Map<String, Object> attachmentData = new HashMap<>();
@@ -1006,14 +1059,10 @@ public class ChatActivity extends AppCompatActivity {
 
         messagePayload.put("attachments", attachments);
 
-
         String destination = "/app/chat." + chatId + ".send";
         Log.d(TAG, "📤 Broadcasting image via WebSocket to " + destination);
         stompClient.send(destination, messagePayload);
     }
-
-
-
 
     private void broadcastImageMessageViaWebSocket(long messageId, AttachmentResponse attachment, long senderId) {
         if (stompClient == null || !stompClient.isConnected()) {
@@ -1029,7 +1078,6 @@ public class ChatActivity extends AppCompatActivity {
         messagePayload.put("messageType", "image");
         messagePayload.put("status", "sent");
         messagePayload.put("createdAt", java.time.Instant.now().toString());
-
 
         List<Map<String, Object>> attachments = new ArrayList<>();
         Map<String, Object> att = new HashMap<>();
@@ -1081,8 +1129,6 @@ public class ChatActivity extends AppCompatActivity {
             default: return "sent";
         }
     }
-
-
 
     private void sendViaRest(String text) {
         Map<String, Object> request = new HashMap<>();
