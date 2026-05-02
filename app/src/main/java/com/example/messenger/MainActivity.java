@@ -53,6 +53,7 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
     private static final int REQUEST_CHAT = 100;
+    private static final long REFRESH_DELAY_MS = 300;
     private static MainActivity instance;
 
     private RecyclerView chatRecyclerView;
@@ -68,6 +69,10 @@ public class MainActivity extends AppCompatActivity {
     private List<ChatItem> allChats = new ArrayList<>();
     private long currentUserId;
     private String authToken;
+
+    private boolean shouldRefreshChats = false;
+    private long lastLoadTime = 0;
+    private static final long MIN_REFRESH_INTERVAL_MS = 2000;
 
     private static final boolean TEST_EMPTY_STATE = false;
     private static final boolean TEST_ERROR_STATE = false;
@@ -95,17 +100,29 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         loadProfileAvatar();
+
+
+        if (shouldRefreshChats) {
+            shouldRefreshChats = false;
+            long now = System.currentTimeMillis();
+            if (now - lastLoadTime > MIN_REFRESH_INTERVAL_MS) {
+                handler.postDelayed(this::loadChats, REFRESH_DELAY_MS);
+            }
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+
+        shouldRefreshChats = true;
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         if (instance == this) instance = null;
+        handler.removeCallbacksAndMessages(null);
     }
 
     public static long getSharedCurrentUserId() {
@@ -253,6 +270,7 @@ public class MainActivity extends AppCompatActivity {
                     .collect(Collectors.toList());
             chatAdapter.submitList(filtered);
         } catch (Exception e) {
+            Log.e(TAG, "Error filtering chats", e);
             chatAdapter.submitList(new ArrayList<>());
         }
     }
@@ -296,11 +314,13 @@ public class MainActivity extends AppCompatActivity {
                         chatAdapter.submitList(allChats);
                         showState(State.CONTENT);
                         fetchPartnerAvatars(allChats);
+                        lastLoadTime = System.currentTimeMillis();
                     }
                 } else {
                     if (response.code() == 401) {
                         logoutAndGoToLogin();
                     } else {
+                        Log.e(TAG, "Failed to load chats: " + response.code());
                         showState(State.ERROR);
                     }
                 }
@@ -525,7 +545,17 @@ public class MainActivity extends AppCompatActivity {
 
         long chatId = chat.get("id") != null ? ((Number) chat.get("id")).longValue() : 0L;
         String name = chat.get("name") != null ? (String) chat.get("name") : "Без названия";
-        String lastMessage = chat.get("lastMessage") != null ? (String) chat.get("lastMessage") : "Нажмите, чтобы открыть";
+
+        String lastMessage = "Нажмите, чтобы открыть";
+        if (chat.containsKey("lastMessage")) {
+            Object lastMsgObj = chat.get("lastMessage");
+            if (lastMsgObj instanceof String) {
+                String msg = (String) lastMsgObj;
+                if (msg != null && !msg.isEmpty()) {
+                    lastMessage = msg;
+                }
+            }
+        }
 
         String rawTime = (String) chat.get("lastMessageTime");
         if (rawTime == null || rawTime.isEmpty()) {
@@ -536,7 +566,7 @@ public class MainActivity extends AppCompatActivity {
         }
         String time = formatTime(rawTime);
 
-        Log.d("ChatMapper", "Chat id=" + chatId + ", name=" + name + ", partnerUserId=" + partnerUserId + ", avatarUrl='" + avatarUrl + "'");
+        Log.d("ChatMapper", "Chat id=" + chatId + ", name=" + name + ", lastMessage='" + lastMessage + "'");
 
         return new ChatItem(chatId, name, lastMessage, time, 0, isPinned, partnerUserId, avatarUrl);
     }
