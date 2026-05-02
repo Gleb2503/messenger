@@ -35,6 +35,9 @@ import com.example.messenger.util.Constants;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.textfield.TextInputEditText;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -49,6 +52,7 @@ import retrofit2.Response;
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
+    private static final int REQUEST_CHAT = 100;
     private static MainActivity instance;
 
     private RecyclerView chatRecyclerView;
@@ -264,9 +268,11 @@ public class MainActivity extends AppCompatActivity {
     private void loadChats() {
         showState(State.LOADING);
 
+        allChats.clear();
+        chatAdapter.submitList(new ArrayList<>());
+
         if (TEST_EMPTY_STATE) {
             handler.postDelayed(() -> {
-                allChats = new ArrayList<>();
                 chatAdapter.submitList(allChats);
                 showState(State.EMPTY);
             }, 1000);
@@ -372,6 +378,42 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private LocalDateTime parseDateTimeWithFallback(Map<String, Object> chat) {
+        String[] fields = {"lastMessageTime", "updatedAt", "createdAt"};
+
+        for (String field : fields) {
+            Object value = chat.get(field);
+            if (value instanceof String && !((String) value).isEmpty()) {
+                try {
+                    return LocalDateTime.parse((String) value, DateTimeFormatter.ISO_DATE_TIME);
+                } catch (DateTimeParseException e1) {
+                    try {
+                        return LocalDateTime.parse((String) value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+                    } catch (DateTimeParseException e2) {
+                        try {
+                            String cleaned = ((String) value).replace("Z", "").split("\\.")[0];
+                            return LocalDateTime.parse(cleaned, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+                        } catch (Exception e3) {
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private int compareByLastMessageTime(Map<String, Object> a, Map<String, Object> b) {
+        LocalDateTime timeA = parseDateTimeWithFallback(a);
+        LocalDateTime timeB = parseDateTimeWithFallback(b);
+
+        if (timeA == null && timeB == null) return 0;
+        if (timeA == null) return 1;
+        if (timeB == null) return -1;
+
+        return timeB.compareTo(timeA);
+    }
+
     private List<ChatItem> mapBackendChatsToUI(List<Map<String, Object>> backendChats) {
         List<ChatItem> uiList = new ArrayList<>();
         List<Map<String, Object>> pinnedChats = new ArrayList<>();
@@ -393,6 +435,9 @@ public class MainActivity extends AppCompatActivity {
                 regularChats.add(chat);
             }
         }
+
+        pinnedChats.sort(this::compareByLastMessageTime);
+        regularChats.sort(this::compareByLastMessageTime);
 
         if (!pinnedChats.isEmpty()) {
             uiList.add(new ChatItem(ChatItem.TYPE_HEADER_PINNED, "Закрепленные"));
@@ -481,7 +526,15 @@ public class MainActivity extends AppCompatActivity {
         long chatId = chat.get("id") != null ? ((Number) chat.get("id")).longValue() : 0L;
         String name = chat.get("name") != null ? (String) chat.get("name") : "Без названия";
         String lastMessage = chat.get("lastMessage") != null ? (String) chat.get("lastMessage") : "Нажмите, чтобы открыть";
-        String time = formatTime((String) chat.get("updatedAt"));
+
+        String rawTime = (String) chat.get("lastMessageTime");
+        if (rawTime == null || rawTime.isEmpty()) {
+            rawTime = (String) chat.get("updatedAt");
+        }
+        if (rawTime == null || rawTime.isEmpty()) {
+            rawTime = (String) chat.get("createdAt");
+        }
+        String time = formatTime(rawTime);
 
         Log.d("ChatMapper", "Chat id=" + chatId + ", name=" + name + ", partnerUserId=" + partnerUserId + ", avatarUrl='" + avatarUrl + "'");
 
@@ -582,7 +635,20 @@ public class MainActivity extends AppCompatActivity {
         intent.putExtra("chat_id", chatId);
         intent.putExtra("chat_name", chatName);
         intent.putExtra("partner_user_id", partnerUserId);
-        startActivity(intent);
+        startActivityForResult(intent, REQUEST_CHAT);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == REQUEST_CHAT && resultCode == RESULT_OK) {
+            loadChats();
+        }
+
+        if (requestCode == Constants.REQUEST_EDIT_PROFILE && resultCode == RESULT_OK) {
+            loadProfileAvatar();
+        }
     }
 
     private void showChatOptionsDialog(long chatId, String chatName, boolean isPinned) {
@@ -678,14 +744,6 @@ public class MainActivity extends AppCompatActivity {
         getSharedPreferences(Constants.PREF_NAME, MODE_PRIVATE).edit().clear().apply();
         startActivity(new Intent(this, LoginActivity.class));
         finish();
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == Constants.REQUEST_EDIT_PROFILE && resultCode == RESULT_OK) {
-            loadProfileAvatar();
-        }
     }
 
     private enum State { LOADING, CONTENT, EMPTY, ERROR }

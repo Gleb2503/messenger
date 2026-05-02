@@ -1,3 +1,4 @@
+
 package com.example.messenger.profile;
 
 import android.content.Intent;
@@ -167,12 +168,18 @@ public class ProfileActivity extends AppCompatActivity {
     }
 
     private void parseUserProfile(Map<String, Object> userData) {
+        String displayName = getStringField(userData, "displayName");
+        if (!displayName.isEmpty()) {
+            username = displayName;
+        } else {
+            String rawUsername = getStringField(userData, "username");
+            username = rawUsername.startsWith("@") ? rawUsername.substring(1) : rawUsername;
+        }
+
         String rawUsername = getStringField(userData, "username");
         if (!rawUsername.isEmpty()) {
-            username = rawUsername.startsWith("@") ? rawUsername.substring(1) : rawUsername;
             handle = rawUsername.startsWith("@") ? rawUsername : "@" + rawUsername;
         } else {
-            username = "Пользователь";
             handle = "@user";
         }
 

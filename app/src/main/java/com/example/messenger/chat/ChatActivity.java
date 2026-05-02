@@ -69,6 +69,7 @@ public class ChatActivity extends AppCompatActivity {
     private String chatTopicSubscriptionId = null;
 
     private RecyclerView messagesRecyclerView;
+    private LinearLayoutManager layoutManager;
     private LinearLayout emptyState, noConnectionState;
     private EditText messageInput;
     private ImageView sendButton, backButton, menuIcon, statusIcon, attachButton, partnerAvatar;
@@ -241,7 +242,9 @@ public class ChatActivity extends AppCompatActivity {
 
         messageAdapter.setOnMediaClickListener((url, type) -> openMediaViewer(url, type));
 
-        messagesRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        layoutManager = new LinearLayoutManager(this);
+        layoutManager.setStackFromEnd(true);
+        messagesRecyclerView.setLayoutManager(layoutManager);
         messagesRecyclerView.setAdapter(messageAdapter);
     }
 
@@ -615,6 +618,7 @@ public class ChatActivity extends AppCompatActivity {
                                 }
 
                                 messageAdapter.notifyItemChanged(i);
+                                scrollToBottom(true);
                                 return;
                             }
                         }
@@ -632,7 +636,7 @@ public class ChatActivity extends AppCompatActivity {
 
                 messageAdapter.addMessage(newItem);
                 showState(State.CONTENT);
-                scrollToBottom();
+                scrollToBottom(true);
                 Log.d(TAG, "➕ Added new message with id=" + realId + ", hasAttachment=" + (fileUrl != null));
 
                 if (senderId != currentUserId && stompClient != null && stompClient.isConnected()) {
@@ -693,11 +697,15 @@ public class ChatActivity extends AppCompatActivity {
                     } else {
                         messageAdapter.setMessages(messages);
                         showState(State.CONTENT);
-                        scrollToBottom();
+
+                        messagesRecyclerView.post(() -> {
+                            scrollToBottom(false);
+                            if (stompClient != null && stompClient.isConnected()) {
+                                markAllMessagesAsRead();
+                            }
+                        });
+
                         tryExtractPartnerUserId(messages);
-                        if (stompClient != null && stompClient.isConnected()) {
-                            markAllMessagesAsRead();
-                        }
                     }
                 } else {
                     Log.e(TAG, "Failed to load messages: " + response.code());
@@ -831,12 +839,13 @@ public class ChatActivity extends AppCompatActivity {
         );
         messageAdapter.addMessage(tempMsg);
         showState(State.CONTENT);
-        scrollToBottom();
+        scrollToBottom(true);
         Log.d(TAG, "➕ Added optimistic text message to UI");
 
         if (stompClient != null && stompClient.isConnected()) {
             Log.d(TAG, "📤 Sending text via WebSocket...");
             stompClient.sendMessage(String.valueOf(chatId), text, MessageType.TEXT);
+            notifyMessageSent();
         } else {
             Log.d(TAG, "⚠️ WS disconnected, sending text via REST...");
             sendViaRest(text);
@@ -860,7 +869,7 @@ public class ChatActivity extends AppCompatActivity {
         );
         messageAdapter.addMessage(tempMsg);
         showState(State.CONTENT);
-        scrollToBottom();
+        scrollToBottom(true);
         Log.d(TAG, "➕ Added optimistic image message to UI");
 
         createEmptyMessageOnServer(chatId, "image", new Callback<Long>() {
@@ -1005,6 +1014,7 @@ public class ChatActivity extends AppCompatActivity {
                                 MessageType.IMAGE,
                                 attachmentsList
                         );
+                        notifyMessageSent();
                     });
                 } else {
                     Log.e(TAG, "❌ Upload failed: " + response.code() + " - " + response.message());
@@ -1140,6 +1150,7 @@ public class ChatActivity extends AppCompatActivity {
             public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
                 if (response.isSuccessful() && response.body() != null) {
                     Log.d(TAG, "✅ REST message sent successfully");
+                    notifyMessageSent();
                 } else {
                     Toast.makeText(ChatActivity.this, "Ошибка отправки", Toast.LENGTH_SHORT).show();
                 }
@@ -1149,6 +1160,13 @@ public class ChatActivity extends AppCompatActivity {
                 Toast.makeText(ChatActivity.this, "Нет соединения", Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    private void notifyMessageSent() {
+        Intent result = new Intent();
+        result.putExtra("chat_id", chatId);
+        result.putExtra("updated", true);
+        setResult(RESULT_OK, result);
     }
 
     private void showNoConnection(boolean show) {
@@ -1166,12 +1184,21 @@ public class ChatActivity extends AppCompatActivity {
                 .show();
     }
 
-    private void scrollToBottom() {
+    private void scrollToBottom(boolean smooth) {
         messagesRecyclerView.post(() -> {
-            if (messageAdapter.getItemCount() > 0) {
-                messagesRecyclerView.smoothScrollToPosition(messageAdapter.getItemCount() - 1);
+            if (messageAdapter != null && layoutManager != null && messageAdapter.getItemCount() > 0) {
+                int lastPosition = messageAdapter.getItemCount() - 1;
+                if (smooth) {
+                    messagesRecyclerView.smoothScrollToPosition(lastPosition);
+                } else {
+                    layoutManager.scrollToPosition(lastPosition);
+                }
             }
         });
+    }
+
+    private void scrollToBottom() {
+        scrollToBottom(false);
     }
 
     private void openMediaViewer(String url, MessageType type) {
