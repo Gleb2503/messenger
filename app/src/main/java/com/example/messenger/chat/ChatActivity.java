@@ -10,9 +10,11 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -63,6 +65,7 @@ public class ChatActivity extends AppCompatActivity {
 
     private static final String TAG = "ChatActivity";
     private static final int IMAGE_PICKER_REQUEST = 1001;
+    private static final int PAGE_SIZE = 50;
 
     private final Map<String, String> statusSubscriptions = new HashMap<>();
     private boolean chatTopicSubscribed = false;
@@ -75,6 +78,7 @@ public class ChatActivity extends AppCompatActivity {
     private ImageView sendButton, backButton, menuIcon, statusIcon, attachButton, partnerAvatar;
     private TextView chatName, statusText;
     private Button retryButton;
+    private ProgressBar topProgressBar;
 
     private MessageAdapter messageAdapter;
     private ApiService apiService;
@@ -88,6 +92,10 @@ public class ChatActivity extends AppCompatActivity {
 
     private UserStatusManager.OnWebSocketReadyListener readyListener;
 
+    private boolean isLoadingMore = false;
+    private boolean hasMoreMessages = true;
+    private Long oldestMessageId = null;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -100,6 +108,8 @@ public class ChatActivity extends AppCompatActivity {
         partnerUserId = getIntent().getLongExtra("partner_user_id", -1);
         chatNameStr = getIntent().getStringExtra("chat_name");
         if (chatNameStr == null) chatNameStr = "Чат";
+
+        resetPagination();
 
         long currentUserId = getCurrentUserId();
         Log.d(TAG, "🔐 currentUserId initialized: " + currentUserId);
@@ -229,8 +239,9 @@ public class ChatActivity extends AppCompatActivity {
         chatName = findViewById(R.id.chatName);
         retryButton = findViewById(R.id.retryButton);
         partnerAvatar = findViewById(R.id.partnerAvatar);
-
         attachButton = findViewById(R.id.attachButton);
+        topProgressBar = findViewById(R.id.topProgressBar);
+
         chatName.setText(chatNameStr);
         updatePartnerStatus(false);
 
@@ -246,6 +257,8 @@ public class ChatActivity extends AppCompatActivity {
         layoutManager.setStackFromEnd(true);
         messagesRecyclerView.setLayoutManager(layoutManager);
         messagesRecyclerView.setAdapter(messageAdapter);
+
+        setupScrollListener();
     }
 
     private void setupClickListeners() {
@@ -684,47 +697,93 @@ public class ChatActivity extends AppCompatActivity {
     }
 
     private void loadMessages() {
-        showState(State.LOADING);
-        showNoConnection(false);
+        loadMessages(false);
+    }
 
-        apiService.getMessages(chatId).enqueue(new Callback<List<Map<String, Object>>>() {
-            @Override
-            public void onResponse(Call<List<Map<String, Object>>> call, Response<List<Map<String, Object>>> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    List<MessageItem> messages = mapMessagesWithDates(response.body());
-                    if (messages.isEmpty()) {
-                        showState(State.EMPTY);
-                    } else {
-                        messageAdapter.setMessages(messages);
-                        showState(State.CONTENT);
+    private void loadMessages(boolean isLoadMore) {
+        if (isLoadMore) {
+            if (!hasMoreMessages || isLoadingMore) return;
+            isLoadingMore = true;
+            showTopLoadingIndicator(true);
+        } else {
+            oldestMessageId = null;
+            hasMoreMessages = true;
+            messageAdapter.clearMessages();
+            showState(State.LOADING);
+            showNoConnection(false);
+        }
 
-                        messagesRecyclerView.post(() -> {
-                            scrollToBottom(false);
-                            if (stompClient != null && stompClient.isConnected()) {
-                                markAllMessagesAsRead();
+        apiService.getMessages(chatId, isLoadMore ? oldestMessageId : null, PAGE_SIZE)
+                .enqueue(new Callback<List<Map<String, Object>>>() {
+                    @Override
+                    public void onResponse(Call<List<Map<String, Object>>> call,
+                                           Response<List<Map<String, Object>>> response) {
+                        if (isLoadMore) {
+                            isLoadingMore = false;
+                            showTopLoadingIndicator(false);
+                        }
+
+                        if (response.isSuccessful() && response.body() != null) {
+                            List<Map<String, Object>> backendMessages = response.body();
+
+                            if (backendMessages.isEmpty()) {
+                                hasMoreMessages = false;
+                                if (!isLoadMore) showState(State.EMPTY);
+                                return;
                             }
-                        });
 
-                        tryExtractPartnerUserId(messages);
+                            List<MessageItem> newMessages = mapMessagesWithDates(backendMessages);
+
+                            if (!newMessages.isEmpty()) {
+                                for (MessageItem item : newMessages) {
+                                    if (item.getType() != MessageItem.TYPE_DATE && item.getId() > 0) {
+                                        oldestMessageId = item.getId();
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (isLoadMore) {
+                                messageAdapter.addMessagesAtTop(newMessages);
+                                if (layoutManager != null && !newMessages.isEmpty()) {
+                                    layoutManager.scrollToPositionWithOffset(newMessages.size(), 0);
+                                }
+                            } else {
+                                messageAdapter.setMessages(newMessages);
+                                messagesRecyclerView.post(() -> {
+                                    scrollToBottom(false);
+                                    if (stompClient != null && stompClient.isConnected()) {
+                                        markAllMessagesAsRead();
+                                    }
+                                });
+                                tryExtractPartnerUserId(newMessages);
+                            }
+
+                            if (backendMessages.size() < PAGE_SIZE) {
+                                hasMoreMessages = false;
+                            }
+
+                            if (!isLoadMore) showState(State.CONTENT);
+                        } else {
+                            Log.e(TAG, "Failed to load messages: " + response.code());
+                            if (!isLoadMore) showNoConnection(true);
+                        }
                     }
-                } else {
-                    Log.e(TAG, "Failed to load messages: " + response.code());
-                    showNoConnection(true);
-                }
-            }
 
-            @Override
-            public void onFailure(Call<List<Map<String, Object>>> call, Throwable t) {
-                Log.e(TAG, "Network error loading messages", t);
-                showNoConnection(true);
-            }
-        });
+                    @Override
+                    public void onFailure(Call<List<Map<String, Object>>> call, Throwable t) {
+                        if (isLoadMore) {
+                            isLoadingMore = false;
+                            showTopLoadingIndicator(false);
+                        }
+                        Log.e(TAG, "Network error loading messages", t);
+                        if (!isLoadMore) showNoConnection(true);
+                    }
+                });
     }
 
     private List<MessageItem> mapMessagesWithDates(List<Map<String, Object>> backendMessages) {
         List<MessageItem> items = new ArrayList<>();
-        String lastDateHeader = null;
-        LocalDate today = LocalDate.now();
         long currentUserId = getCurrentUserId();
 
         for (Map<String, Object> msg : backendMessages) {
@@ -761,28 +820,8 @@ public class ChatActivity extends AppCompatActivity {
                 }
             }
 
-            String currentDateHeader = null;
-            if (createdAt != null) {
-                try {
-                    LocalDate msgDate = LocalDateTime.parse(createdAt.replace("Z", "")).toLocalDate();
-                    if (msgDate.equals(today)) {
-                        currentDateHeader = "Сегодня";
-                    } else if (msgDate.equals(today.minusDays(1))) {
-                        currentDateHeader = "Вчера";
-                    } else {
-                        currentDateHeader = DateTimeFormatter.ofPattern("dd.MM.yyyy", new Locale("ru")).format(msgDate);
-                    }
-                } catch (Exception e) {
-                    currentDateHeader = "Сегодня";
-                }
-            }
-
-            if (currentDateHeader != null && !currentDateHeader.equals(lastDateHeader)) {
-                items.add(new MessageItem(0, currentDateHeader, "00:00", 0, MessageItem.TYPE_DATE, 0));
-                lastDateHeader = currentDateHeader;
-            }
-
             MessageItem item = new MessageItem(id, text, time, status, type, senderId, messageType, null);
+            item.setCreatedAt(createdAt);
             if (fileUrl != null && !fileUrl.isEmpty()) {
                 item.setImageUrl(fileUrl);
             }
@@ -1222,6 +1261,36 @@ public class ChatActivity extends AppCompatActivity {
         boolean isContent = (state == State.CONTENT);
         messagesRecyclerView.setVisibility(isContent ? View.VISIBLE : View.GONE);
         emptyState.setVisibility(state == State.EMPTY ? View.VISIBLE : View.GONE);
+    }
+
+    private void setupScrollListener() {
+        messagesRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
+                super.onScrolled(recyclerView, dx, dy);
+
+                if (dy < 0 && !isLoadingMore && hasMoreMessages) {
+                    int firstVisible = layoutManager.findFirstVisibleItemPosition();
+
+                    if (firstVisible <= 3) {
+                        Log.d(TAG, "📥 Triggered load more: firstVisible=" + firstVisible);
+                        loadMessages(true);
+                    }
+                }
+            }
+        });
+    }
+
+    private void showTopLoadingIndicator(boolean show) {
+        if (topProgressBar != null) {
+            topProgressBar.setVisibility(show ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void resetPagination() {
+        isLoadingMore = false;
+        hasMoreMessages = true;
+        oldestMessageId = null;
     }
 
     private interface UploadCallback {

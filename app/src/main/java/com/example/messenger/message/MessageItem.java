@@ -5,7 +5,6 @@ import com.example.messenger.data.websocket.MessageType;
 
 public class MessageItem {
 
-
     public static final int TYPE_DATE = 3;
     public static final int TYPE_HEADER = 4;
     public static final int TYPE_INCOMING = 1;
@@ -17,7 +16,6 @@ public class MessageItem {
     public static final int STATUS_FAILED = 3;
     public static final int STATUS_SENDING = 4;
 
-
     private long id;
     private String text;
     private String time;
@@ -25,22 +23,19 @@ public class MessageItem {
     private int type;
     private long senderId;
 
-
     private MessageType messageType;
     private String imageUrl;
     private String fileName;
     private long fileSize;
     private int uploadProgress;
 
-
     private Uri localImageUri;
 
-
+    private String createdAt;
 
     public MessageItem(long id, String text, String time, int status, int type, long senderId) {
         this(id, text, time, status, type, senderId, MessageType.TEXT, null);
     }
-
 
     public MessageItem(long id, String text, String time, int status, int type,
                        long senderId, MessageType messageType, Uri localImageUri) {
@@ -65,11 +60,9 @@ public class MessageItem {
     public Uri getLocalImageUri() { return localImageUri; }
     public String getImageUrl() { return imageUrl; }
     public int getUploadProgress() { return uploadProgress; }
-
-
     public String getFileName() { return fileName; }
     public long getFileSize() { return fileSize; }
-
+    public String getCreatedAt() { return createdAt; }
 
     public void setId(long id) { this.id = id; }
     public void setText(String text) { this.text = text; }
@@ -81,8 +74,7 @@ public class MessageItem {
     public void setLocalImageUri(Uri uri) { this.localImageUri = uri; }
     public void setImageUrl(String url) { this.imageUrl = url; }
     public void setUploadProgress(int progress) { this.uploadProgress = progress; }
-
-
     public void setFileName(String fileName) { this.fileName = fileName; }
     public void setFileSize(long fileSize) { this.fileSize = fileSize; }
+    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 }

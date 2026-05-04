@@ -19,8 +19,12 @@ import com.example.messenger.R;
 import com.example.messenger.media.MediaItem;
 import com.example.messenger.data.websocket.MessageType;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageViewHolder> {
 
@@ -153,7 +157,6 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
             }
         }
 
-
         Log.w(TAG, "❌ Message " + messageId + " NOT found! Adapter items:");
         for (MessageItem item : items) {
             if (item.getType() != TYPE_DATE && item.getType() != TYPE_HEADER) {
@@ -203,7 +206,6 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
         }
     }
 
-
     public List<MediaItem> collectAllMediaItems() {
         List<MediaItem> result = new ArrayList<>();
         for (MessageItem msg : items) {
@@ -244,6 +246,79 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
     private static String cleanUrl(String url) {
         if (url == null) return null;
         return url.replace("\"", "");
+    }
+
+    public void clearMessages() {
+        items.clear();
+        notifyDataSetChanged();
+    }
+
+    public void addMessagesAtTop(List<MessageItem> newItems) {
+        if (newItems == null || newItems.isEmpty()) return;
+
+        List<MessageItem> filteredItems = new ArrayList<>();
+        for (MessageItem item : newItems) {
+            if (item.getType() != TYPE_DATE) {
+                filteredItems.add(item);
+            }
+        }
+        if (filteredItems.isEmpty()) return;
+
+        int insertPosition = 0;
+        while (insertPosition < items.size() && items.get(insertPosition).getType() == TYPE_DATE) {
+            insertPosition++;
+        }
+
+        int newCount = filteredItems.size();
+        items.addAll(insertPosition, filteredItems);
+
+        recreateDateHeaders();
+
+        notifyItemRangeInserted(insertPosition, newCount);
+    }
+
+    private void recreateDateHeaders() {
+        for (int i = items.size() - 1; i >= 0; i--) {
+            if (items.get(i).getType() == TYPE_DATE) {
+                items.remove(i);
+            }
+        }
+
+        List<MessageItem> newList = new ArrayList<>();
+        String lastDateHeader = null;
+        LocalDate today = LocalDate.now();
+
+        for (MessageItem item : items) {
+            if (item.getType() == TYPE_INCOMING || item.getType() == TYPE_OUTGOING) {
+                String currentDateHeader = null;
+                String createdAt = item.getCreatedAt();
+
+                if (createdAt != null) {
+                    try {
+                        LocalDate msgDate = LocalDateTime.parse(createdAt.replace("Z", "")).toLocalDate();
+                        if (msgDate.equals(today)) {
+                            currentDateHeader = "Сегодня";
+                        } else if (msgDate.equals(today.minusDays(1))) {
+                            currentDateHeader = "Вчера";
+                        } else {
+                            currentDateHeader = DateTimeFormatter.ofPattern("dd.MM.yyyy", new Locale("ru")).format(msgDate);
+                        }
+                    } catch (Exception e) {
+                        currentDateHeader = "Сегодня";
+                    }
+                }
+
+                if (currentDateHeader != null && !currentDateHeader.equals(lastDateHeader)) {
+                    newList.add(new MessageItem(0, currentDateHeader, "00:00", 0, TYPE_DATE, 0));
+                    lastDateHeader = currentDateHeader;
+                }
+                newList.add(item);
+            }
+        }
+
+        items.clear();
+        items.addAll(newList);
+        notifyDataSetChanged();
     }
 
     static class DateViewHolder extends MessageViewHolder {
@@ -458,7 +533,6 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
                                 mediaViewerListener.onMediaViewerRequested(mediaItems, position);
                             }
                         } else if (mediaClickListener != null && item.getImageUrl() != null) {
-
                             mediaClickListener.onMediaClick(cleanUrl(item.getImageUrl()), MessageType.IMAGE);
                         }
                     });

@@ -4,10 +4,8 @@ import com.example.messenger.data.api.attachment.AttachmentResponse;
 import com.example.messenger.data.api.login.LoginRequest;
 import com.example.messenger.data.api.login.LoginResponse;
 import com.example.messenger.data.api.register.RegisterRequest;
-
 import java.util.List;
 import java.util.Map;
-
 import okhttp3.MultipartBody;
 import retrofit2.Call;
 import retrofit2.http.Body;
@@ -19,6 +17,7 @@ import retrofit2.http.POST;
 import retrofit2.http.PUT;
 import retrofit2.http.Part;
 import retrofit2.http.Path;
+import retrofit2.http.Query;
 
 public interface ApiService {
     @POST("auth/login")
@@ -39,18 +38,22 @@ public interface ApiService {
     @DELETE("chats/{id}")
     Call<Void> deleteChat(@Path("id") Long chatId);
 
-
-    @GET("chats/{chatId}/messages")
-    Call<List<Map<String, Object>>> getMessages(@Path("chatId") Long chatId);
+    @GET("messages/chat/{chatId}")
+    Call<List<Map<String, Object>>> getMessages(
+            @Path("chatId") Long chatId,
+            @Query("beforeId") Long beforeId,
+            @Query("size") Integer size
+    );
 
     @POST("chats/{chatId}/messages")
     Call<Map<String, Object>> sendMessage(@Path("chatId") Long chatId, @Body Map<String, Object> request);
 
-
     @POST("message-reads")
     Call<Map<String, Object>> markAsRead(@Body Map<String, Long> request);
+
     @POST("auth/refresh")
     Call<Map<String, Object>> refreshToken(@Body Map<String, String> request);
+
     @Multipart
     @POST("attachments")
     Call<AttachmentResponse> uploadAttachment(
@@ -62,18 +65,15 @@ public interface ApiService {
             @Part("thumbnailUrl") String thumbnailUrl
     );
 
-
     @GET("attachments/{id}/download")
     Call<okhttp3.ResponseBody> downloadAttachment(@Path("id") Long id);
+
     @GET("/api/users/{userId}")
     Call<Map<String, Object>> getUserProfile(@Path("userId") long userId);
+
     @PUT("/api/users/{userId}")
     Call<Map<String, Object>> updateUser(
             @Path("userId") Long userId,
             @Body Map<String, Object> request
     );
-
-
-
-
 }
