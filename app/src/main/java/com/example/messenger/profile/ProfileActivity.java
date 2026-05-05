@@ -19,13 +19,18 @@ import com.bumptech.glide.Glide;
 import com.example.messenger.R;
 import com.example.messenger.data.api.ApiService;
 import com.example.messenger.data.api.RetrofitClient;
+import com.example.messenger.data.websocket.MessageType;
 import com.example.messenger.login.LoginActivity;
+import com.example.messenger.media.MediaItem;
+import com.example.messenger.media.MediaViewerActivity;
 import com.example.messenger.util.Constants;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
@@ -380,6 +385,14 @@ public class ProfileActivity extends AppCompatActivity {
             }
         });
 
+        // Обработчик клика на аватар - открываем на весь экран
+        if (profileAvatar != null) {
+            profileAvatar.setOnClickListener(v -> openAvatarViewer());
+        }
+        if (avatarContainer != null) {
+            avatarContainer.setOnClickListener(v -> openAvatarViewer());
+        }
+
         if (!isReadOnlyMode) {
             emailCard.setOnClickListener(v -> openEditProfile());
             phoneCard.setOnClickListener(v -> openEditProfile());
@@ -408,6 +421,30 @@ public class ProfileActivity extends AppCompatActivity {
                     Toast.makeText(this, "Дата регистрации: " + registrationDateText, Toast.LENGTH_SHORT).show()
             );
         }
+    }
+
+    private void openAvatarViewer() {
+        if (avatarUrl == null || avatarUrl.isEmpty()) {
+            Toast.makeText(this, "Аватар не загружен", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Log.d(TAG, "Opening avatar viewer: " + avatarUrl);
+
+        List<MediaItem> mediaItems = new ArrayList<>();
+        String fileName = username + "_avatar.jpg";
+
+        MediaItem avatarItem = new MediaItem(
+                avatarUrl,
+                fileName,
+                0,
+                new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(new Date()),
+                0,
+                MessageType.IMAGE
+        );
+        mediaItems.add(avatarItem);
+
+        MediaViewerActivity.start(this, mediaItems, 0, -1);
     }
 
     private void openEditProfile() {

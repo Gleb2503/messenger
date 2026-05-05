@@ -20,7 +20,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -29,7 +28,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager2.widget.ViewPager2;
 
 import com.example.messenger.R;
-import com.example.messenger.data.api.RetrofitClient;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -54,7 +52,7 @@ public class MediaViewerActivity extends AppCompatActivity {
     private ViewPager2 viewPager;
     private TextView positionIndicator;
     private View fileInfoCard;
-    private TextView fileNameText, fileSizeText, fileDateText;
+    private TextView fileNameText, fileDateText;
     private ImageView downloadButton, shareButton, backButton, menuButton;
     private ProgressBar progressBar;
 
@@ -77,7 +75,7 @@ public class MediaViewerActivity extends AppCompatActivity {
 
         mediaItems = getIntent().getParcelableArrayListExtra(EXTRA_MEDIA_ITEMS);
         if (mediaItems == null) {
-            Log.e(TAG, "❌ mediaItems is NULL from intent!");
+            Log.e(TAG, "mediaItems is NULL from intent!");
             mediaItems = new ArrayList<>();
         }
 
@@ -100,7 +98,6 @@ public class MediaViewerActivity extends AppCompatActivity {
         positionIndicator = findViewById(R.id.positionIndicator);
         fileInfoCard = findViewById(R.id.fileInfoCard);
         fileNameText = findViewById(R.id.fileNameText);
-        fileSizeText = findViewById(R.id.fileSizeText);
         fileDateText = findViewById(R.id.fileDateText);
         downloadButton = findViewById(R.id.downloadButton);
         shareButton = findViewById(R.id.shareButton);
@@ -149,14 +146,7 @@ public class MediaViewerActivity extends AppCompatActivity {
 
     private void updateFileInfo(MediaItem item) {
         fileNameText.setText(item.getFileName() != null ? item.getFileName() : "image.jpg");
-        fileSizeText.setText(formatFileSize(item.getFileSize()));
         fileDateText.setText(formatDate(item.getCreatedAt()));
-    }
-
-    private String formatFileSize(long size) {
-        if (size < 1024) return size + " B";
-        if (size < 1024 * 1024) return (size / 1024) + " KB";
-        return String.format(Locale.getDefault(), "%.1f MB", size / (1024.0 * 1024.0));
     }
 
     private String formatDate(String isoDate) {
@@ -185,7 +175,6 @@ public class MediaViewerActivity extends AppCompatActivity {
 
     private void downloadCurrentMedia() {
         MediaItem item = mediaItems.get(currentPosition);
-
 
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -217,8 +206,7 @@ public class MediaViewerActivity extends AppCompatActivity {
 
                 String imageUrl = url.startsWith("http") ? url : "https://storage.yandexcloud.net" + url;
 
-                Log.d(TAG, "📥 Downloading from: " + imageUrl);
-
+                Log.d(TAG, "Downloading from: " + imageUrl);
 
                 HttpURLConnection connection = null;
                 InputStream inputStream = null;
@@ -232,7 +220,7 @@ public class MediaViewerActivity extends AppCompatActivity {
                     connection.connect();
 
                     int responseCode = connection.getResponseCode();
-                    Log.d(TAG, "📥 Response code: " + responseCode);
+                    Log.d(TAG, "Response code: " + responseCode);
 
                     if (responseCode != HttpURLConnection.HTTP_OK) {
                         throw new Exception("HTTP error: " + responseCode);
@@ -245,15 +233,14 @@ public class MediaViewerActivity extends AppCompatActivity {
                         throw new Exception("Failed to decode bitmap");
                     }
 
-
                     boolean saved = saveImageToGallery(bitmap, item.getFileName());
 
                     runOnUiThread(() -> {
                         progressBar.setVisibility(View.GONE);
                         if (saved) {
-                            Toast.makeText(this, "✅ Изображение сохранено в галерею", Toast.LENGTH_LONG).show();
+                            Toast.makeText(this, "Изображение сохранено в галерею", Toast.LENGTH_LONG).show();
                         } else {
-                            Toast.makeText(this, "❌ Ошибка сохранения", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, "Ошибка сохранения", Toast.LENGTH_SHORT).show();
                         }
                     });
 
@@ -267,10 +254,10 @@ public class MediaViewerActivity extends AppCompatActivity {
                 }
 
             } catch (Exception e) {
-                Log.e(TAG, "❌ Download error: " + e.getMessage(), e);
+                Log.e(TAG, "Download error: " + e.getMessage(), e);
                 runOnUiThread(() -> {
                     progressBar.setVisibility(View.GONE);
-                    Toast.makeText(this, "❌ Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
             }
         }).start();
@@ -278,7 +265,6 @@ public class MediaViewerActivity extends AppCompatActivity {
 
     private boolean saveImageToGallery(Bitmap bitmap, String fileName) {
         try {
-            // Для Android 10+ используем MediaStore
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ContentValues values = new ContentValues();
                 values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName != null ? fileName : "image_" + System.currentTimeMillis() + ".jpg");
@@ -294,17 +280,15 @@ public class MediaViewerActivity extends AppCompatActivity {
                         bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream);
                         outputStream.close();
 
-
                         values.clear();
                         values.put(MediaStore.Images.Media.IS_PENDING, 0);
                         getContentResolver().update(uri, values, null, null);
 
-                        Log.d(TAG, "✅ Image saved to: " + uri);
+                        Log.d(TAG, "Image saved to: " + uri);
                         return true;
                     }
                 }
             } else {
-                // Для Android 9 и ниже
                 File picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
                 File messengerDir = new File(picturesDir, "Messenger");
 
@@ -326,12 +310,12 @@ public class MediaViewerActivity extends AppCompatActivity {
                 mediaScanIntent.setData(contentUri);
                 sendBroadcast(mediaScanIntent);
 
-                Log.d(TAG, "✅ Image saved to: " + imageFile.getAbsolutePath());
+                Log.d(TAG, "Image saved to: " + imageFile.getAbsolutePath());
                 return true;
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "❌ Error saving image: " + e.getMessage(), e);
+            Log.e(TAG, "Error saving image: " + e.getMessage(), e);
         }
 
         return false;
@@ -344,7 +328,7 @@ public class MediaViewerActivity extends AppCompatActivity {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 downloadCurrentMedia();
             } else {
-                Toast.makeText(this, "❌ Требуется разрешение для сохранения", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Требуется разрешение для сохранения", Toast.LENGTH_SHORT).show();
             }
         }
     }
@@ -352,7 +336,6 @@ public class MediaViewerActivity extends AppCompatActivity {
     private void shareCurrentMedia() {
         MediaItem item = mediaItems.get(currentPosition);
         Toast.makeText(this, "Поделиться: " + item.getFileName(), Toast.LENGTH_SHORT).show();
-
     }
 
     private static class MediaPagerAdapter extends RecyclerView.Adapter<MediaViewHolder> {
@@ -392,7 +375,7 @@ public class MediaViewerActivity extends AppCompatActivity {
         }
 
         public void bind(MediaItem item) {
-            Log.d(TAG, "🖼️ bind() STARTED | pos=" + getAdapterPosition());
+            Log.d(TAG, "bind() STARTED | pos=" + getAdapterPosition());
 
             try {
                 String url = item.getUrl();
@@ -446,13 +429,13 @@ public class MediaViewerActivity extends AppCompatActivity {
                             }
                         }
                     } catch (Exception e) {
-                        Log.e(TAG, "❌ Download failed: " + e.getMessage());
+                        Log.e(TAG, "Download failed: " + e.getMessage());
                         itemView.post(this::showImageError);
                     }
                 }).start();
 
             } catch (Exception e) {
-                Log.e(TAG, "💥 EXCEPTION: " + e.getMessage());
+                Log.e(TAG, "EXCEPTION: " + e.getMessage());
                 showImageError();
             }
         }
