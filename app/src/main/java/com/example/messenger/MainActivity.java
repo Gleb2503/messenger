@@ -805,7 +805,6 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onFailure(Call<List<Map<String, Object>>> call, Throwable t) {}
         });
     }
-
     private long findPartnerUserId(Map<String, Object> chat, long currentUserId) {
         if (chat.containsKey("partner") && chat.get("partner") instanceof Map) {
             Map<String, Object> partnerMap = (Map<String, Object>) chat.get("partner");

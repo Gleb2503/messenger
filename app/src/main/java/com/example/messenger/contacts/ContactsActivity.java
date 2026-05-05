@@ -1,6 +1,7 @@
 package com.example.messenger.contacts;
 
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -11,10 +12,14 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import com.example.messenger.MessengerApplication;
 import com.example.messenger.R;
 import com.example.messenger.data.api.ApiService;
 import com.example.messenger.data.api.RetrofitClient;
 import com.example.messenger.profile.ProfileActivity;
+import com.example.messenger.status.AppStatusManager;
+import com.example.messenger.status.UserStatusManager;
+import com.example.messenger.data.websocket.StompClient;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -26,6 +31,9 @@ import retrofit2.Response;
 public class ContactsActivity extends AppCompatActivity {
     private ApiService apiService;
     private ContactsAdapter contactsAdapter;
+    private StompClient stompClient;
+    private UserStatusManager.OnWebSocketReadyListener readyListener;
+    private final Map<Long, String> statusSubscriptions = new HashMap<>();
     private long currentUserId;
     private RecyclerView recyclerView;
     private EditText searchInput;
@@ -44,7 +52,28 @@ public class ContactsActivity extends AppCompatActivity {
         currentUserId = RetrofitClient.getUserId();
         initViews();
         setupListeners();
+        initWebSocket();
         loadContactsAndChats();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshCachedStatuses();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (readyListener != null) {
+            UserStatusManager sm = ((MessengerApplication) getApplication()).getStatusManager();
+            if (sm != null) {
+                sm.removeOnReadyListener(readyListener);
+            }
+            readyListener = null;
+        }
+        unsubscribeAllStatuses();
+        stompClient = null;
     }
 
     private void initViews() {
@@ -81,6 +110,127 @@ public class ContactsActivity extends AppCompatActivity {
         });
     }
 
+    private void initWebSocket() {
+        UserStatusManager statusManager = ((MessengerApplication) getApplication()).getStatusManager();
+        StompClient sharedClient = statusManager.getStompClient();
+        String authToken = RetrofitClient.getToken();
+        if (sharedClient != null && sharedClient.isConnected()) {
+            this.stompClient = sharedClient;
+            subscribeToAllStatuses();
+        } else {
+            readyListener = () -> {
+                if (!isFinishing() && !isDestroyed()) {
+                    UserStatusManager sm = ((MessengerApplication) getApplication()).getStatusManager();
+                    this.stompClient = sm.getStompClient();
+                    subscribeToAllStatuses();
+                }
+            };
+            statusManager.addOnReadyListener(readyListener);
+            if (authToken != null && !authToken.isEmpty()) {
+                statusManager.initWebSocket(authToken);
+            }
+        }
+    }
+
+    private void subscribeToAllStatuses() {
+        if (stompClient == null || !stompClient.isConnected()) return;
+        for (ContactItem contact : allContacts) {
+            subscribeToPartnerStatus(contact.getUserId());
+        }
+        subscribeToPersonalQueue();
+    }
+
+    private void subscribeToPartnerStatus(long userId) {
+        if (userId <= 0 || userId == currentUserId) return;
+        if (statusSubscriptions.containsKey(userId)) return;
+        String destination = "/topic/user/" + userId + "/status";
+        String subscriptionId = stompClient.subscribe(destination, payload -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (payload instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> status = (Map<String, Object>) payload;
+                Boolean online = (Boolean) status.get("online");
+                Object userIdObj = status.get("userId");
+                Long targetUserId = userIdObj instanceof Number ? ((Number) userIdObj).longValue() : null;
+                if (online != null && targetUserId != null && targetUserId == userId) {
+                    AppStatusManager.getInstance().updateStatus(userId, online, "public_topic");
+                    updateContactStatusUI(userId, online);
+                }
+            }
+        });
+        if (subscriptionId != null) {
+            statusSubscriptions.put(userId, subscriptionId);
+            Map<String, Object> request = new HashMap<>();
+            request.put("userId", userId);
+            request.put("requesterId", currentUserId);
+            stompClient.send("/app/user.status.request", request);
+        }
+    }
+
+    private void subscribeToPersonalQueue() {
+        if (stompClient == null || !stompClient.isConnected()) return;
+        String personalQueue = "/user/" + currentUserId + "/queue/user.status";
+        stompClient.subscribe(personalQueue, payload -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (payload instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> response = (Map<String, Object>) payload;
+                Object userIdObj = response.get("userId");
+                Object onlineObj = response.get("online");
+                if (userIdObj instanceof Number && onlineObj instanceof Boolean) {
+                    Long targetUserId = ((Number) userIdObj).longValue();
+                    Boolean isOnline = (Boolean) onlineObj;
+                    if (contactsMap.containsKey(targetUserId)) {
+                        AppStatusManager.getInstance().updateStatus(targetUserId, isOnline, "personal_queue");
+                        updateContactStatusUI(targetUserId, isOnline);
+                    }
+                }
+            }
+        });
+    }
+
+    private void unsubscribeAllStatuses() {
+        if (stompClient == null || !stompClient.isConnected()) return;
+        for (Map.Entry<Long, String> entry : statusSubscriptions.entrySet()) {
+            String destination = "/topic/user/" + entry.getKey() + "/status";
+            stompClient.unsubscribe(destination, entry.getValue());
+        }
+        statusSubscriptions.clear();
+    }
+
+    private void updateContactStatusUI(long userId, boolean isOnline) {
+        runOnUiThread(() -> {
+            ContactItem contact = contactsMap.get(userId);
+            if (contact != null) {
+                int index = filteredContacts.indexOf(contact);
+                if (index >= 0) {
+                    ContactItem updated = new ContactItem(
+                            contact.getId(),
+                            contact.getUserId(),
+                            contact.getDisplayName(),
+                            contact.getUsername(),
+                            contact.getAvatarUrl(),
+                            isOnline,
+                            contact.isExplicitContact()
+                    );
+                    filteredContacts.set(index, updated);
+                    allContacts.set(allContacts.indexOf(contact), updated);
+                    contactsMap.put(userId, updated);
+                    contactsAdapter.notifyItemChanged(index);
+                }
+            }
+        });
+    }
+
+    private void refreshCachedStatuses() {
+        for (ContactItem contact : allContacts) {
+            Boolean cached = AppStatusManager.getInstance().getStatus(contact.getUserId());
+            if (cached != null && cached != contact.isOnline()) {
+                updateContactStatusUI(contact.getUserId(), cached);
+            }
+        }
+    }
+
     private void loadContactsAndChats() {
         showLoading(true);
         allContacts.clear();
@@ -101,7 +251,9 @@ public class ContactsActivity extends AppCompatActivity {
                             String displayName = (String) contactUser.get("displayName");
                             String avatarUrl = (String) contactUser.get("avatarUrl");
                             if (displayName == null || displayName.isEmpty()) displayName = username;
-                            ContactItem item = new ContactItem(id, userId, displayName, username, avatarUrl, false, true);
+                            Boolean cachedStatus = AppStatusManager.getInstance().getStatus(userId);
+                            boolean isOnline = cachedStatus != null ? cachedStatus : false;
+                            ContactItem item = new ContactItem(id, userId, displayName, username, avatarUrl, isOnline, true);
                             allContacts.add(item);
                             contactsMap.put(userId, item);
                         } catch (Exception e) {
@@ -150,7 +302,9 @@ public class ContactsActivity extends AppCompatActivity {
                             }
                             if (username == null) username = "";
                             if (avatarUrl == null) avatarUrl = "";
-                            ContactItem item = new ContactItem(0L, partnerUserId, displayName, username, avatarUrl, false, false);
+                            Boolean cachedStatus = AppStatusManager.getInstance().getStatus(partnerUserId);
+                            boolean isOnline = cachedStatus != null ? cachedStatus : false;
+                            ContactItem item = new ContactItem(0L, partnerUserId, displayName, username, avatarUrl, isOnline, false);
                             allContacts.add(item);
                             contactsMap.put(partnerUserId, item);
                         } catch (Exception e) {
@@ -161,6 +315,9 @@ public class ContactsActivity extends AppCompatActivity {
                     filteredContacts.clear();
                     filteredContacts.addAll(allContacts);
                     updateUI();
+                    if (stompClient != null && stompClient.isConnected()) {
+                        subscribeToAllStatuses();
+                    }
                 } else {
                     updateUI();
                 }
