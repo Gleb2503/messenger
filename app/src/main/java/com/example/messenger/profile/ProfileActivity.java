@@ -1,10 +1,11 @@
-
 package com.example.messenger.profile;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -40,6 +41,8 @@ public class ProfileActivity extends AppCompatActivity {
 
     private Toolbar toolbar;
     private ImageView backButton, moreOptionsButton, profileAvatar;
+    private TextView toolbarTitle;
+    private ImageView emailArrow, phoneArrow;
     private FrameLayout avatarContainer;
     private TextView userName, userUsername, userEmail, userPhone, registrationDate;
     private MaterialButton editProfileButton;
@@ -59,6 +62,9 @@ public class ProfileActivity extends AppCompatActivity {
     private boolean viewsInitialized = false;
     private boolean isProfileJustUpdated = false;
 
+    private boolean isReadOnlyMode = false;
+    private long partnerUserId = -1;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -67,6 +73,9 @@ public class ProfileActivity extends AppCompatActivity {
         setContentView(R.layout.activity_profile);
         initViews();
         initNetwork();
+
+        checkReadOnlyMode();
+
         loadProfileData();
     }
 
@@ -84,6 +93,10 @@ public class ProfileActivity extends AppCompatActivity {
         toolbar = findViewById(R.id.toolbar);
         backButton = findViewById(R.id.backButton);
         moreOptionsButton = findViewById(R.id.moreOptionsButton);
+
+        toolbarTitle = findViewById(R.id.toolbarTitle);
+        emailArrow = findViewById(R.id.emailArrow);
+        phoneArrow = findViewById(R.id.phoneArrow);
 
         avatarContainer = findViewById(R.id.avatarContainer);
         profileAvatar = findViewById(R.id.profileAvatar);
@@ -116,10 +129,48 @@ public class ProfileActivity extends AppCompatActivity {
         authToken = RetrofitClient.getToken();
     }
 
+    private void checkReadOnlyMode() {
+        partnerUserId = getIntent().getLongExtra("partner_user_id", -1);
+        isReadOnlyMode = partnerUserId > 0;
+
+        if (isReadOnlyMode) {
+            Log.d(TAG, "Opening partner profile (read-only) for userId: " + partnerUserId);
+
+            if (editProfileButton != null) {
+                editProfileButton.setVisibility(View.GONE);
+            }
+
+            if (emailCard != null) {
+                emailCard.setClickable(false);
+                emailCard.setFocusable(false);
+                emailCard.setAlpha(0.7f);
+            }
+            if (phoneCard != null) {
+                phoneCard.setClickable(false);
+                phoneCard.setFocusable(false);
+                phoneCard.setAlpha(0.7f);
+            }
+            if (emailArrow != null) {
+                emailArrow.setVisibility(View.GONE);
+            }
+            if (phoneArrow != null) {
+                phoneArrow.setVisibility(View.GONE);
+            }
+
+            if (toolbarTitle != null) {
+                toolbarTitle.setText("Профиль");
+            }
+        }
+    }
+
     private void loadProfileData() {
-        loadFromSharedPreferences();
-        updateProfileUI();
-        fetchUserProfileFromServer();
+        if (isReadOnlyMode && partnerUserId > 0) {
+            fetchPartnerProfile();
+        } else {
+            loadFromSharedPreferences();
+            updateProfileUI();
+            fetchUserProfileFromServer();
+        }
     }
 
     private void loadFromSharedPreferences() {
@@ -163,6 +214,51 @@ public class ProfileActivity extends AppCompatActivity {
             @Override
             public void onFailure(Call<Map<String, Object>> call, Throwable t) {
                 Log.e(TAG, "Network error", t);
+            }
+        });
+    }
+
+    private void fetchPartnerProfile() {
+        if (authToken == null || authToken.isEmpty() || partnerUserId <= 0) {
+            Toast.makeText(this, "Ошибка загрузки профиля", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
+        showLoading(true);
+
+        apiService.getUserProfile(partnerUserId).enqueue(new Callback<Map<String, Object>>() {
+            @Override
+            public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
+                showLoading(false);
+
+                if (response.isSuccessful() && response.body() != null) {
+                    parseUserProfile(response.body());
+                    updateProfileUI();
+                } else {
+                    Log.e(TAG, "Failed to load partner profile: " + response.code());
+                    Toast.makeText(ProfileActivity.this, "Не удалось загрузить профиль", Toast.LENGTH_SHORT).show();
+                    finish();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<Map<String, Object>> call, Throwable t) {
+                showLoading(false);
+                Log.e(TAG, "Network error loading partner profile", t);
+                Toast.makeText(ProfileActivity.this, "Ошибка сети", Toast.LENGTH_SHORT).show();
+                finish();
+            }
+        });
+    }
+
+    private void showLoading(boolean show) {
+        runOnUiThread(() -> {
+            if (userName != null) {
+                userName.setText(show ? "Загрузка..." : "");
+            }
+            if (profileAvatar != null && show) {
+                profileAvatar.setImageResource(R.drawable.bg_avatar_placeholder);
             }
         });
     }
@@ -275,16 +371,43 @@ public class ProfileActivity extends AppCompatActivity {
 
     private void setupListeners() {
         backButton.setOnClickListener(v -> onBackPressed());
-        moreOptionsButton.setOnClickListener(v -> showOptionsMenu());
 
-        emailCard.setOnClickListener(v -> openEditProfile());
-        phoneCard.setOnClickListener(v -> openEditProfile());
+        moreOptionsButton.setOnClickListener(v -> {
+            if (isReadOnlyMode) {
+                showPartnerOptionsMenu();
+            } else {
+                showOptionsMenu();
+            }
+        });
 
-        registrationCard.setOnClickListener(v ->
-                Toast.makeText(this, "Дата регистрации: " + registrationDateText, Toast.LENGTH_SHORT).show()
-        );
+        if (!isReadOnlyMode) {
+            emailCard.setOnClickListener(v -> openEditProfile());
+            phoneCard.setOnClickListener(v -> openEditProfile());
+            registrationCard.setOnClickListener(v ->
+                    Toast.makeText(this, "Дата регистрации: " + registrationDateText, Toast.LENGTH_SHORT).show()
+            );
+            editProfileButton.setOnClickListener(v -> openEditProfile());
+        } else {
+            emailCard.setOnClickListener(v -> {
+                if (!email.isEmpty()) {
+                    Intent emailIntent = new Intent(Intent.ACTION_SENDTO);
+                    emailIntent.setData(Uri.parse("mailto:" + email));
+                    startActivity(Intent.createChooser(emailIntent, "Написать письмо"));
+                }
+            });
 
-        editProfileButton.setOnClickListener(v -> openEditProfile());
+            phoneCard.setOnClickListener(v -> {
+                if (!phone.isEmpty() && phone.matches("^\\+?\\d[\\d\\s\\-()]+$")) {
+                    Intent callIntent = new Intent(Intent.ACTION_DIAL);
+                    callIntent.setData(Uri.parse("tel:" + phone.replaceAll("[^\\d+]", "")));
+                    startActivity(callIntent);
+                }
+            });
+
+            registrationCard.setOnClickListener(v ->
+                    Toast.makeText(this, "Дата регистрации: " + registrationDateText, Toast.LENGTH_SHORT).show()
+            );
+        }
     }
 
     private void openEditProfile() {
@@ -309,6 +432,53 @@ public class ProfileActivity extends AppCompatActivity {
                 .show();
     }
 
+    private void showPartnerOptionsMenu() {
+        String[] items = {"Написать сообщение", "Позвонить", "Заблокировать", "Пожаловаться"};
+        new AlertDialog.Builder(this)
+                .setTitle("Действия")
+                .setItems(items, (dialog, which) -> {
+                    switch (which) {
+                        case 0:
+                            finish();
+                            break;
+                        case 1:
+                            if (!phone.isEmpty()) {
+                                Intent callIntent = new Intent(Intent.ACTION_DIAL);
+                                callIntent.setData(Uri.parse("tel:" + phone.replaceAll("[^\\d+]", "")));
+                                startActivity(callIntent);
+                            } else {
+                                Toast.makeText(this, "Номер телефона не указан", Toast.LENGTH_SHORT).show();
+                            }
+                            break;
+                        case 2:
+                            confirmBlockUser();
+                            break;
+                        case 3:
+                            reportUser();
+                            break;
+                    }
+                })
+                .show();
+    }
+
+    private void confirmBlockUser() {
+        new AlertDialog.Builder(this)
+                .setTitle("Заблокировать пользователя?")
+                .setMessage("Вы больше не будете получать сообщения от этого собеседника. Это действие можно отменить в настройках.")
+                .setPositiveButton("Заблокировать", (d, w) -> blockUser())
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    private void blockUser() {
+        Toast.makeText(this, "Пользователь заблокирован", Toast.LENGTH_SHORT).show();
+        finish();
+    }
+
+    private void reportUser() {
+        Toast.makeText(this, "Жалоба отправлена. Спасибо!", Toast.LENGTH_SHORT).show();
+    }
+
     private void showLogoutConfirmation() {
         new AlertDialog.Builder(this)
                 .setTitle("Выйти из аккаунта?")
@@ -331,12 +501,18 @@ public class ProfileActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         super.onBackPressed();
-        overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right);
+        if (isReadOnlyMode) {
+            overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right);
+        }
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+
+        if (isReadOnlyMode) {
+            return;
+        }
 
         if (requestCode == Constants.REQUEST_EDIT_PROFILE && resultCode == RESULT_OK && data != null) {
             String newDisplayName = data.getStringExtra(Constants.KEY_DISPLAY_NAME);

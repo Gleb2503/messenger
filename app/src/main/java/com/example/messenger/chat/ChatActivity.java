@@ -23,6 +23,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
 import com.example.messenger.media.MediaViewerActivity;
+import com.example.messenger.profile.ProfileActivity;
 import com.example.messenger.status.AppStatusManager;
 import com.example.messenger.message.MessageAdapter;
 import com.example.messenger.message.MessageItem;
@@ -263,6 +264,25 @@ public class ChatActivity extends AppCompatActivity {
 
     private void setupClickListeners() {
         backButton.setOnClickListener(v -> finish());
+
+        if (partnerUserId > 0) {
+            View profileClickArea = findViewById(R.id.partnerAvatar);
+            if (profileClickArea != null) {
+                profileClickArea.setOnClickListener(v -> openPartnerProfile());
+                profileClickArea.setClickable(true);
+                profileClickArea.setFocusable(true);
+            }
+
+            if (chatName != null) {
+                chatName.setOnClickListener(v -> openPartnerProfile());
+                chatName.setClickable(true);
+            }
+
+            if (partnerAvatar != null) {
+                partnerAvatar.setOnClickListener(v -> openPartnerProfile());
+            }
+        }
+
         menuIcon.setOnClickListener(v -> showChatMenu());
         sendButton.setOnClickListener(v -> sendMessage());
         attachButton.setOnClickListener(v -> openGallery());
@@ -1291,6 +1311,22 @@ public class ChatActivity extends AppCompatActivity {
         isLoadingMore = false;
         hasMoreMessages = true;
         oldestMessageId = null;
+    }
+
+    private void openPartnerProfile() {
+        if (partnerUserId <= 0) {
+            Toast.makeText(this, "Пользователь не найден", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Log.d(TAG, "Opening partner profile for userId: " + partnerUserId);
+
+        Intent intent = new Intent(this, ProfileActivity.class);
+        intent.putExtra("partner_user_id", partnerUserId);
+        intent.putExtra("from_chat_id", chatId);
+
+        startActivity(intent);
+        overridePendingTransition(R.anim.slide_in_right, R.anim.slide_out_left);
     }
 
     private interface UploadCallback {
