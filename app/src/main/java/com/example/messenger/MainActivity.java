@@ -27,6 +27,7 @@ import com.bumptech.glide.Glide;
 import com.example.messenger.chat.ChatActivity;
 import com.example.messenger.chat.ChatAdapter;
 import com.example.messenger.chat.ChatItem;
+import com.example.messenger.contacts.ContactsActivity;
 import com.example.messenger.login.LoginActivity;
 import com.example.messenger.data.api.ApiService;
 import com.example.messenger.data.api.RetrofitClient;
@@ -621,7 +622,6 @@ public class MainActivity extends AppCompatActivity {
         Map<String, String> request = new HashMap<>();
         request.put("participantPhone", phoneNumber);
         request.put("type", "private_chat");
-
         apiService.createChat(request).enqueue(new Callback<Map<String, Object>>() {
             @Override
             public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
@@ -629,7 +629,6 @@ public class MainActivity extends AppCompatActivity {
                     Map<String, Object> newChat = response.body();
                     String chatName = (String) newChat.get("name");
                     long chatId = ((Number) newChat.get("id")).longValue();
-
                     long partnerUserId = -1;
                     Map<String, Object> createdBy = (Map<String, Object>) newChat.get("createdBy");
                     if (createdBy != null && createdBy.get("id") != null) {
@@ -638,9 +637,9 @@ public class MainActivity extends AppCompatActivity {
                             partnerUserId = createdById;
                         }
                     }
-
                     Toast.makeText(MainActivity.this, "Чат с " + chatName + " создан", Toast.LENGTH_SHORT).show();
                     loadChats();
+                    autoAddContact(currentUserId, partnerUserId, chatName);
                     openChatActivity(chatId, chatName, partnerUserId);
                 } else {
                     if (response.code() == 404) {
@@ -652,7 +651,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             }
-
             @Override
             public void onFailure(Call<Map<String, Object>> call, Throwable t) {
                 Toast.makeText(MainActivity.this, "Ошибка сети", Toast.LENGTH_LONG).show();
@@ -745,24 +743,25 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showMenuDialog() {
-        String[] items = {"Настройки", "Профиль", "Выйти"};
-
+        String[] items = {"Контакты", "Настройки", "Профиль", "Выйти"};
         new AlertDialog.Builder(this)
                 .setTitle("Меню")
                 .setItems(items, (dialog, which) -> {
                     switch (which) {
                         case 0:
-                            Toast.makeText(this, "Настройки", Toast.LENGTH_SHORT).show();
+                            Intent contactsIntent = new Intent(MainActivity.this, ContactsActivity.class);
+                            startActivity(contactsIntent);
+                            overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right);
                             break;
                         case 1:
+                            Toast.makeText(this, "Настройки", Toast.LENGTH_SHORT).show();
+                            break;
+                        case 2:
                             Intent profileIntent = new Intent(MainActivity.this, ProfileActivity.class);
                             startActivity(profileIntent);
                             break;
-                        case 2:
+                        case 3:
                             logoutAndGoToLogin();
-                            break;
-                        default:
-                            Toast.makeText(this, "Неизвестный пункт: " + which, Toast.LENGTH_SHORT).show();
                             break;
                     }
                 })
@@ -777,6 +776,35 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private enum State { LOADING, CONTENT, EMPTY, ERROR }
+    private void autoAddContact(long userId, long contactUserId, String nickname) {
+        if (userId <= 0 || contactUserId <= 0) return;
+        apiService.getUserContacts(userId).enqueue(new Callback<List<Map<String, Object>>>() {
+            @Override
+            public void onResponse(Call<List<Map<String, Object>>> call, Response<List<Map<String, Object>>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    boolean exists = false;
+                    for (Map<String, Object> c : response.body()) {
+                        Map<String, Object> cu = (Map<String, Object>) c.get("contactUser");
+                        if (cu != null && cu.get("id") instanceof Number && ((Number) cu.get("id")).longValue() == contactUserId) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if (!exists) {
+                        Map<String, Object> addReq = new HashMap<>();
+                        addReq.put("userId", userId);
+                        addReq.put("contactUserId", contactUserId);
+                        addReq.put("nickname", nickname);
+                        apiService.addContact(addReq).enqueue(new Callback<Map<String, Object>>() {
+                            @Override public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {}
+                            @Override public void onFailure(Call<Map<String, Object>> call, Throwable t) {}
+                        });
+                    }
+                }
+            }
+            @Override public void onFailure(Call<List<Map<String, Object>>> call, Throwable t) {}
+        });
+    }
 
     private long findPartnerUserId(Map<String, Object> chat, long currentUserId) {
         if (chat.containsKey("partner") && chat.get("partner") instanceof Map) {

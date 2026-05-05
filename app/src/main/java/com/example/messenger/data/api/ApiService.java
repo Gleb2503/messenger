@@ -76,4 +76,18 @@ public interface ApiService {
             @Path("userId") Long userId,
             @Body Map<String, Object> request
     );
+    @GET("/api/contacts/user/{userId}")
+    Call<List<Map<String, Object>>> getUserContacts(@Path("userId") Long userId);
+
+    @POST("/api/contacts")
+    Call<Map<String, Object>> addContact(@Body Map<String, Object> request);
+
+    @PUT("/api/contacts/{id}/block")
+    Call<Map<String, Object>> blockContact(@Path("id") Long id);
+
+    @PUT("/api/contacts/{id}/unblock")
+    Call<Map<String, Object>> unblockContact(@Path("id") Long id);
+
+    @DELETE("/api/contacts/{id}")
+    Call<Void> deleteContact(@Path("id") Long id);
 }

@@ -58,6 +58,10 @@
             android:name=".profile.EditProfileActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".contacts.ContactsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Messenger" />
 
 
     </application>
