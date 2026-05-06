@@ -30,8 +30,11 @@ public class MessageItem {
     private int uploadProgress;
 
     private Uri localImageUri;
-
     private String createdAt;
+
+
+    private String senderName;
+    private String senderAvatarUrl;
 
     public MessageItem(long id, String text, String time, int status, int type, long senderId) {
         this(id, text, time, status, type, senderId, MessageType.TEXT, null);
@@ -48,8 +51,9 @@ public class MessageItem {
         this.messageType = messageType != null ? messageType : MessageType.TEXT;
         this.localImageUri = localImageUri;
         this.uploadProgress = 0;
+        this.senderName = null;
+        this.senderAvatarUrl = null;
     }
-
     public long getId() { return id; }
     public String getText() { return text; }
     public String getTime() { return time; }
@@ -64,6 +68,11 @@ public class MessageItem {
     public long getFileSize() { return fileSize; }
     public String getCreatedAt() { return createdAt; }
 
+
+    public String getSenderName() { return senderName; }
+    public String getSenderAvatarUrl() { return senderAvatarUrl; }
+
+
     public void setId(long id) { this.id = id; }
     public void setText(String text) { this.text = text; }
     public void setTime(String time) { this.time = time; }
@@ -77,4 +86,8 @@ public class MessageItem {
     public void setFileName(String fileName) { this.fileName = fileName; }
     public void setFileSize(long fileSize) { this.fileSize = fileSize; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
+
+
+    public void setSenderName(String senderName) { this.senderName = senderName; }
+    public void setSenderAvatarUrl(String senderAvatarUrl) { this.senderAvatarUrl = senderAvatarUrl; }
 }

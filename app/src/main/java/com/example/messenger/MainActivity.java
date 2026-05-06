@@ -27,6 +27,7 @@ import com.bumptech.glide.Glide;
 import com.example.messenger.chat.ChatActivity;
 import com.example.messenger.chat.ChatAdapter;
 import com.example.messenger.chat.ChatItem;
+import com.example.messenger.group.CreateGroupChatActivity;
 import com.example.messenger.contacts.ContactsActivity;
 import com.example.messenger.login.LoginActivity;
 import com.example.messenger.data.api.ApiService;
@@ -54,7 +55,9 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "MainActivity";
     private static final int REQUEST_CHAT = 100;
+    private static final int REQUEST_CREATE_GROUP = 101;
     private static final long REFRESH_DELAY_MS = 300;
+    private static final long MIN_REFRESH_INTERVAL_MS = 2000;
     private static MainActivity instance;
 
     private RecyclerView chatRecyclerView;
@@ -73,7 +76,6 @@ public class MainActivity extends AppCompatActivity {
 
     private boolean shouldRefreshChats = false;
     private long lastLoadTime = 0;
-    private static final long MIN_REFRESH_INTERVAL_MS = 2000;
 
     private static final boolean TEST_EMPTY_STATE = false;
     private static final boolean TEST_ERROR_STATE = false;
@@ -102,7 +104,6 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         loadProfileAvatar();
 
-
         if (shouldRefreshChats) {
             shouldRefreshChats = false;
             long now = System.currentTimeMillis();
@@ -115,7 +116,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-
         shouldRefreshChats = true;
     }
 
@@ -146,7 +146,11 @@ public class MainActivity extends AppCompatActivity {
         chatRecyclerView.setAdapter(chatAdapter);
 
         chatAdapter.setOnChatClickListener(chatItem -> {
-            openChatActivity(chatItem.getId(), chatItem.getName(), chatItem.getPartnerUserId());
+            if (!chatItem.isHeader()) {
+                openChatActivity(chatItem.getId(), chatItem.getName(),
+                        chatItem.isGroupChat() ? -1 : chatItem.getPartnerUserId(),
+                        chatItem.isGroupChat());
+            }
         });
 
         chatAdapter.setOnChatLongClickListener((chatId, chatName, isPinned) -> {
@@ -346,7 +350,7 @@ public class MainActivity extends AppCompatActivity {
             }
 
             long partnerUserId = chat.getPartnerUserId();
-            if (partnerUserId <= 0) continue;
+            if (partnerUserId <= 0 && !chat.isGroupChat()) continue;
 
             String cachedAvatar = prefs.getString("avatar_user_" + partnerUserId, "");
             if (!cachedAvatar.isEmpty() && cachedAvatar.startsWith("http")) {
@@ -354,25 +358,46 @@ public class MainActivity extends AppCompatActivity {
                 continue;
             }
 
-            apiService.getUserProfile(partnerUserId).enqueue(new Callback<Map<String, Object>>() {
-                @Override
-                public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
-                    if (response.isSuccessful() && response.body() != null) {
-                        Object avatarObj = response.body().get("avatarUrl");
-                        if (avatarObj instanceof String) {
-                            String avatarUrl = (String) avatarObj;
-                            if (avatarUrl != null && !avatarUrl.isEmpty() && avatarUrl.startsWith("http")) {
-                                prefs.edit().putString("avatar_user_" + partnerUserId, avatarUrl).apply();
-                                updateChatAvatar(chat.getId(), avatarUrl);
+            if (chat.isGroupChat()) {
+                apiService.getChatInfo(chat.getId()).enqueue(new Callback<Map<String, Object>>() {
+                    @Override
+                    public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
+                        if (response.isSuccessful() && response.body() != null) {
+                            Object avatarObj = response.body().get("avatarUrl");
+                            if (avatarObj instanceof String) {
+                                String avatarUrl = (String) avatarObj;
+                                if (avatarUrl != null && !avatarUrl.isEmpty() && avatarUrl.startsWith("http")) {
+                                    updateChatAvatar(chat.getId(), avatarUrl);
+                                }
                             }
                         }
                     }
-                }
-                @Override
-                public void onFailure(Call<Map<String, Object>> call, Throwable t) {
-                    Log.e(TAG, "Failed to fetch avatar for user " + partnerUserId, t);
-                }
-            });
+                    @Override
+                    public void onFailure(Call<Map<String, Object>> call, Throwable t) {
+                        Log.e(TAG, "Failed to fetch group avatar", t);
+                    }
+                });
+            } else if (partnerUserId > 0) {
+                apiService.getUserProfile(partnerUserId).enqueue(new Callback<Map<String, Object>>() {
+                    @Override
+                    public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
+                        if (response.isSuccessful() && response.body() != null) {
+                            Object avatarObj = response.body().get("avatarUrl");
+                            if (avatarObj instanceof String) {
+                                String avatarUrl = (String) avatarObj;
+                                if (avatarUrl != null && !avatarUrl.isEmpty() && avatarUrl.startsWith("http")) {
+                                    prefs.edit().putString("avatar_user_" + partnerUserId, avatarUrl).apply();
+                                    updateChatAvatar(chat.getId(), avatarUrl);
+                                }
+                            }
+                        }
+                    }
+                    @Override
+                    public void onFailure(Call<Map<String, Object>> call, Throwable t) {
+                        Log.e(TAG, "Failed to fetch avatar for user " + partnerUserId, t);
+                    }
+                });
+            }
         }
     }
 
@@ -388,8 +413,10 @@ public class MainActivity extends AppCompatActivity {
                             chat.getTime(),
                             chat.getUnreadCount(),
                             chat.isPinned(),
-                            chat.getPartnerUserId(),
-                            newAvatarUrl
+                            chat.getAvatarUrl(),
+                            chat.getChatType(),
+                            chat.getParticipantCount(),
+                            chat.isOnline()
                     );
                     allChats.set(i, updated);
                     chatAdapter.notifyItemChanged(i);
@@ -567,9 +594,23 @@ public class MainActivity extends AppCompatActivity {
         }
         String time = formatTime(rawTime);
 
-        Log.d("ChatMapper", "Chat id=" + chatId + ", name=" + name + ", lastMessage='" + lastMessage + "'");
+        int chatType = ChatItem.CHAT_TYPE_PRIVATE;
+        Object typeObj = chat.get("type");
+        if (typeObj instanceof String) {
+            String typeStr = (String) typeObj;
+            if ("group_chat".equals(typeStr) || "group".equals(typeStr)) {
+                chatType = ChatItem.CHAT_TYPE_GROUP;
+            }
+        }
 
-        return new ChatItem(chatId, name, lastMessage, time, 0, isPinned, partnerUserId, avatarUrl);
+
+        int participantCount = 2;
+        if (chat.containsKey("participantCount") && chat.get("participantCount") instanceof Number) {
+            participantCount = ((Number) chat.get("participantCount")).intValue();
+        }
+
+        return new ChatItem(chatId, name, lastMessage, time, 0, isPinned,
+                avatarUrl, chatType, participantCount, false);
     }
 
     private String formatTime(String isoTime) {
@@ -588,6 +629,22 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showCreateChatDialog() {
+        String[] options = {"Личный чат", "Групповой чат"};
+
+        new AlertDialog.Builder(this)
+                .setTitle("Создать чат")
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        showCreatePrivateChatDialog();
+                    } else {
+                        Intent intent = new Intent(this, CreateGroupChatActivity.class);
+                        startActivityForResult(intent, REQUEST_CREATE_GROUP);
+                    }
+                })
+                .show();
+    }
+
+    private void showCreatePrivateChatDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Новый личный чат");
 
@@ -640,7 +697,7 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(MainActivity.this, "Чат с " + chatName + " создан", Toast.LENGTH_SHORT).show();
                     loadChats();
                     autoAddContact(currentUserId, partnerUserId, chatName);
-                    openChatActivity(chatId, chatName, partnerUserId);
+                    openChatActivity(chatId, chatName, partnerUserId, false);
                 } else {
                     if (response.code() == 404) {
                         Toast.makeText(MainActivity.this, "Пользователь с таким номером не найден", Toast.LENGTH_LONG).show();
@@ -658,11 +715,12 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void openChatActivity(long chatId, String chatName, long partnerUserId) {
+    private void openChatActivity(long chatId, String chatName, long partnerUserId, boolean isGroup) {
         Intent intent = new Intent(this, ChatActivity.class);
         intent.putExtra("chat_id", chatId);
         intent.putExtra("chat_name", chatName);
         intent.putExtra("partner_user_id", partnerUserId);
+        intent.putExtra("is_group", isGroup);
         startActivityForResult(intent, REQUEST_CHAT);
     }
 
@@ -672,6 +730,12 @@ public class MainActivity extends AppCompatActivity {
 
         if (requestCode == REQUEST_CHAT && resultCode == RESULT_OK) {
             loadChats();
+        }
+
+        if (requestCode == REQUEST_CREATE_GROUP && resultCode == RESULT_OK && data != null) {
+            long chatId = data.getLongExtra("chat_id", -1);
+            String chatName = data.getStringExtra("chat_name");
+            openChatActivity(chatId, chatName, -1, true);
         }
 
         if (requestCode == Constants.REQUEST_EDIT_PROFILE && resultCode == RESULT_OK) {
@@ -776,6 +840,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private enum State { LOADING, CONTENT, EMPTY, ERROR }
+
     private void autoAddContact(long userId, long contactUserId, String nickname) {
         if (userId <= 0 || contactUserId <= 0) return;
         apiService.getUserContacts(userId).enqueue(new Callback<List<Map<String, Object>>>() {
@@ -805,6 +870,7 @@ public class MainActivity extends AppCompatActivity {
             @Override public void onFailure(Call<List<Map<String, Object>>> call, Throwable t) {}
         });
     }
+
     private long findPartnerUserId(Map<String, Object> chat, long currentUserId) {
         if (chat.containsKey("partner") && chat.get("partner") instanceof Map) {
             Map<String, Object> partnerMap = (Map<String, Object>) chat.get("partner");
@@ -837,11 +903,6 @@ public class MainActivity extends AppCompatActivity {
                     return createdById;
                 }
             }
-        }
-
-        Object chatName = chat.get("name");
-        if (chatName instanceof String && !((String) chatName).isEmpty()) {
-            Log.w(TAG, "Could not find partner userId for chat: " + chatName + ". API may not include participants array.");
         }
 
         return -1;

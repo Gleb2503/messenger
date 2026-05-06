@@ -22,6 +22,11 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.engine.GlideException;
+import com.bumptech.glide.request.RequestListener;
+import com.bumptech.glide.request.target.Target;
+import com.example.messenger.group.AddParticipantsActivity;
+import com.example.messenger.group.GroupInfoActivity;
 import com.example.messenger.media.MediaViewerActivity;
 import com.example.messenger.profile.ProfileActivity;
 import com.example.messenger.status.AppStatusManager;
@@ -44,8 +49,6 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -67,6 +70,7 @@ public class ChatActivity extends AppCompatActivity {
     private static final String TAG = "ChatActivity";
     private static final int IMAGE_PICKER_REQUEST = 1001;
     private static final int PAGE_SIZE = 50;
+    private static final int REQUEST_ADD_PARTICIPANTS = 1003;
 
     private final Map<String, String> statusSubscriptions = new HashMap<>();
     private boolean chatTopicSubscribed = false;
@@ -76,8 +80,15 @@ public class ChatActivity extends AppCompatActivity {
     private LinearLayoutManager layoutManager;
     private LinearLayout emptyState, noConnectionState;
     private EditText messageInput;
-    private ImageView sendButton, backButton, menuIcon, statusIcon, attachButton, partnerAvatar;
-    private TextView chatName, statusText;
+    private ImageView sendButton, backButton, menuIcon, attachButton, partnerAvatar;
+
+    private ImageView statusIcon;
+    private TextView statusText;
+
+    private TextView participantCountText;
+    private ImageView groupAvatar;
+
+    private TextView chatName;
     private Button retryButton;
     private ProgressBar topProgressBar;
 
@@ -90,6 +101,7 @@ public class ChatActivity extends AppCompatActivity {
     private long partnerUserId;
     private String chatNameStr;
     private String authToken;
+    private boolean isGroupChat;
 
     private UserStatusManager.OnWebSocketReadyListener readyListener;
 
@@ -100,7 +112,14 @@ public class ChatActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_chat);
+
+        isGroupChat = getIntent().getBooleanExtra("is_group", false);
+
+        if (isGroupChat) {
+            setContentView(R.layout.activity_group_chat);
+        } else {
+            setContentView(R.layout.activity_chat);
+        }
 
         RetrofitClient.init(this);
         apiService = RetrofitClient.getApiService();
@@ -108,6 +127,7 @@ public class ChatActivity extends AppCompatActivity {
         chatId = getIntent().getLongExtra("chat_id", -1);
         partnerUserId = getIntent().getLongExtra("partner_user_id", -1);
         chatNameStr = getIntent().getStringExtra("chat_name");
+
         if (chatNameStr == null) chatNameStr = "Чат";
 
         resetPagination();
@@ -120,7 +140,9 @@ public class ChatActivity extends AppCompatActivity {
         initViews();
         setupClickListeners();
 
-        if (partnerUserId > 0) {
+        if (isGroupChat) {
+            loadGroupInfo();
+        } else if (partnerUserId > 0) {
             Boolean cached = AppStatusManager.getInstance().getStatus(partnerUserId);
             if (cached != null) {
                 Log.d(TAG, "📦 Showing cached status: " + cached);
@@ -141,7 +163,7 @@ public class ChatActivity extends AppCompatActivity {
             long managerUserId = statusManager.getCurrentUserId();
             subscribeToChatTopics(managerUserId);
 
-            if (partnerUserId > 0 && !partnerStatusSubscribed) {
+            if (!isGroupChat && partnerUserId > 0 && !partnerStatusSubscribed) {
                 subscribeToPartnerStatus(managerUserId);
                 partnerStatusSubscribed = true;
             }
@@ -155,7 +177,7 @@ public class ChatActivity extends AppCompatActivity {
                     long userId = sm.getCurrentUserId();
                     subscribeToChatTopics(userId);
 
-                    if (partnerUserId > 0 && !partnerStatusSubscribed) {
+                    if (!isGroupChat && partnerUserId > 0 && !partnerStatusSubscribed) {
                         subscribeToPartnerStatus(userId);
                         partnerStatusSubscribed = true;
                     }
@@ -225,6 +247,33 @@ public class ChatActivity extends AppCompatActivity {
                 sendImageMessage(imageUri);
             }
         }
+
+        if (requestCode == REQUEST_ADD_PARTICIPANTS && resultCode == RESULT_OK) {
+            loadMessages();
+        }
+    }
+
+    private String normalizeUrl(String url) {
+        if (url == null || url.isEmpty()) return null;
+        url = url.trim();
+
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+            return url;
+        }
+
+        if (url.startsWith("//")) {
+            return "https:" + url;
+        }
+
+        String baseUrl = "http://178.212.12.112:8080/api/";
+
+        if (baseUrl.endsWith("/") && url.startsWith("/")) {
+            return baseUrl + url.substring(1);
+        }
+        if (!baseUrl.endsWith("/") && !url.startsWith("/")) {
+            return baseUrl + "/" + url;
+        }
+        return baseUrl + url;
     }
 
     private void initViews() {
@@ -235,18 +284,33 @@ public class ChatActivity extends AppCompatActivity {
         sendButton = findViewById(R.id.sendButton);
         backButton = findViewById(R.id.backButton);
         menuIcon = findViewById(R.id.menuIcon);
-        statusIcon = findViewById(R.id.statusIcon);
-        statusText = findViewById(R.id.statusText);
         chatName = findViewById(R.id.chatName);
         retryButton = findViewById(R.id.retryButton);
-        partnerAvatar = findViewById(R.id.partnerAvatar);
         attachButton = findViewById(R.id.attachButton);
         topProgressBar = findViewById(R.id.topProgressBar);
 
+        if (isGroupChat) {
+            groupAvatar = findViewById(R.id.groupAvatar);
+            participantCountText = findViewById(R.id.participantCount);
+            statusIcon = null;
+            statusText = null;
+            partnerAvatar = groupAvatar;
+            if (participantCountText != null) {
+                participantCountText.setText("Групповой чат");
+            }
+        } else {
+            statusIcon = findViewById(R.id.statusIcon);
+            statusText = findViewById(R.id.statusText);
+            partnerAvatar = findViewById(R.id.partnerAvatar);
+            participantCountText = null;
+            groupAvatar = null;
+            updatePartnerStatus(false);
+        }
+
         chatName.setText(chatNameStr);
-        updatePartnerStatus(false);
 
         messageAdapter = new MessageAdapter();
+        messageAdapter.setGroupChat(isGroupChat);
 
         messageAdapter.setOnMediaViewerListener((mediaItems, position) -> {
             MediaViewerActivity.start(ChatActivity.this, mediaItems, position, chatId);
@@ -265,22 +329,28 @@ public class ChatActivity extends AppCompatActivity {
     private void setupClickListeners() {
         backButton.setOnClickListener(v -> finish());
 
-        if (partnerUserId > 0) {
-            View profileClickArea = findViewById(R.id.partnerAvatar);
-            if (profileClickArea != null) {
-                profileClickArea.setOnClickListener(v -> openPartnerProfile());
-                profileClickArea.setClickable(true);
-                profileClickArea.setFocusable(true);
-            }
+        View clickTarget = isGroupChat ? groupAvatar : partnerAvatar;
+        if (clickTarget != null) {
+            clickTarget.setOnClickListener(v -> {
+                if (isGroupChat) {
+                    showGroupInfo();
+                } else {
+                    openPartnerProfile();
+                }
+            });
+            clickTarget.setClickable(true);
+            clickTarget.setFocusable(true);
+        }
 
-            if (chatName != null) {
-                chatName.setOnClickListener(v -> openPartnerProfile());
-                chatName.setClickable(true);
-            }
-
-            if (partnerAvatar != null) {
-                partnerAvatar.setOnClickListener(v -> openPartnerProfile());
-            }
+        if (chatName != null) {
+            chatName.setOnClickListener(v -> {
+                if (isGroupChat) {
+                    showGroupInfo();
+                } else {
+                    openPartnerProfile();
+                }
+            });
+            chatName.setClickable(true);
         }
 
         menuIcon.setOnClickListener(v -> showChatMenu());
@@ -318,28 +388,46 @@ public class ChatActivity extends AppCompatActivity {
     }
 
     private void loadPartnerAvatar() {
-        if (partnerAvatar == null || partnerUserId <= 0) return;
+        if (partnerAvatar == null || partnerUserId <= 0) {
+            Log.w(TAG, "⚠️ loadPartnerAvatar skipped: partnerAvatar=" + partnerAvatar + ", partnerUserId=" + partnerUserId);
+            return;
+        }
 
         String cachedAvatar = getSharedPreferences("messenger_prefs", MODE_PRIVATE)
                 .getString("avatar_user_" + partnerUserId, "");
 
-        if (cachedAvatar != null && !cachedAvatar.isEmpty() && cachedAvatar.startsWith("http")) {
-            loadAvatarIntoView(cachedAvatar);
-            return;
+        if (cachedAvatar != null && !cachedAvatar.isEmpty()) {
+            String normalized = normalizeUrl(cachedAvatar);
+            if (normalized != null) {
+                Log.d(TAG, "📦 Loading cached avatar: " + normalized);
+                loadAvatarIntoView(normalized);
+                return;
+            }
         }
 
         partnerAvatar.setImageResource(R.drawable.bg_logo_gradient);
 
-        if (authToken == null || authToken.isEmpty()) return;
+        if (authToken == null || authToken.isEmpty()) {
+            Log.w(TAG, "⚠️ Auth token is empty, skipping avatar fetch");
+            return;
+        }
+
+        Log.d(TAG, "🌐 Fetching avatar for partnerUserId: " + partnerUserId);
 
         apiService.getUserProfile(partnerUserId).enqueue(new Callback<Map<String, Object>>() {
             @Override
             public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
                 if (response.isSuccessful() && response.body() != null) {
+                    Log.d(TAG, "📦 API Response: " + response.body());
+
                     Object avatarObj = response.body().get("avatarUrl");
+                    if (avatarObj == null) avatarObj = response.body().get("avatar_url");
+                    if (avatarObj == null) avatarObj = response.body().get("photo");
+
                     if (avatarObj instanceof String) {
-                        String avatarUrl = (String) avatarObj;
-                        if (avatarUrl != null && !avatarUrl.isEmpty() && avatarUrl.startsWith("http")) {
+                        String avatarUrl = normalizeUrl((String) avatarObj); // 🔧 используем normalizeUrl
+                        if (avatarUrl != null) {
+                            Log.d(TAG, "✅ Got avatar URL: " + avatarUrl);
                             getSharedPreferences("messenger_prefs", MODE_PRIVATE)
                                     .edit()
                                     .putString("avatar_user_" + partnerUserId, avatarUrl)
@@ -347,33 +435,179 @@ public class ChatActivity extends AppCompatActivity {
                             if (!isFinishing() && !isDestroyed()) {
                                 runOnUiThread(() -> loadAvatarIntoView(avatarUrl));
                             }
+                        } else {
+                            Log.w(TAG, "⚠️ Avatar URL is null after normalization");
                         }
+                    } else {
+                        Log.w(TAG, "⚠️ Avatar field not found or wrong type: " + avatarObj);
+                    }
+                } else {
+                    Log.e(TAG, "❌ Failed to fetch profile: " + response.code());
+                }
+            }
+
+            @Override
+            public void onFailure(Call<Map<String, Object>> call, Throwable t) {
+                Log.e(TAG, "❌ Network error fetching avatar", t);
+            }
+        });
+    }
+
+    private void loadGroupAvatar(String url) {
+        if (groupAvatar == null) {
+            Log.e(TAG, "❌ groupAvatar is null! Check activity_group_chat.xml");
+            return;
+        }
+
+        if (url != null && !url.isEmpty() && url.startsWith("http")) {
+            String normalizedUrl = normalizeUrl(url);
+            Log.d(TAG, "🖼️ Loading group avatar: " + normalizedUrl);
+
+            Glide.with(this)
+                    .load(normalizedUrl)
+                    .placeholder(R.drawable.bg_logo_gradient)
+                    .error(R.drawable.bg_logo_gradient)
+                    .circleCrop()
+                    .into(groupAvatar);
+        } else {
+
+            Log.d(TAG, "🖼️ Showing placeholder for group avatar");
+            groupAvatar.setImageResource(R.drawable.bg_logo_gradient);
+
+            if (chatNameStr != null && !chatNameStr.isEmpty()) {
+                String firstLetter = chatNameStr.substring(0, 1).toUpperCase(Locale.getDefault());
+            }
+        }
+    }
+
+    private void loadGroupInfo() {
+        Log.d(TAG, "📡 Loading group info for chatId: " + chatId);
+
+        apiService.getChatInfo(chatId).enqueue(new Callback<Map<String, Object>>() {
+            @Override
+            public void onResponse(Call<Map<String, Object>> call, Response<Map<String, Object>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    Log.d(TAG, "📦 Group info response: " + response.body());
+
+                    String groupName = (String) response.body().get("name");
+                    if (groupName != null) {
+                        chatName.setText(groupName);
+                        chatNameStr = groupName;
+                    }
+
+
+                    Object avatarUrl = response.body().get("avatarUrl");
+                    if (avatarUrl == null) avatarUrl = response.body().get("avatar_url");
+                    if (avatarUrl == null) avatarUrl = response.body().get("photo");
+                    if (avatarUrl == null) avatarUrl = response.body().get("groupAvatar");
+
+                    if (avatarUrl instanceof String && !((String) avatarUrl).isEmpty()) {
+                        String url = normalizeUrl((String) avatarUrl);
+                        loadGroupAvatar(url);
+                    } else {
+                        loadGroupAvatar(null);
+                    }
+
+
+                    loadGroupParticipantCount();
+
+                } else {
+                    Log.e(TAG, "❌ Failed to load group info: " + response.code());
+                    if (participantCountText != null) {
+                        participantCountText.setText("Групповой чат");
                     }
                 }
             }
 
             @Override
             public void onFailure(Call<Map<String, Object>> call, Throwable t) {
-                Log.e(TAG, "Failed to fetch avatar for user " + partnerUserId, t);
+                Log.e(TAG, "❌ Network error loading group info", t);
+                if (participantCountText != null) {
+                    participantCountText.setText("Групповой чат");
+                }
+            }
+        });
+    }
+    private void loadGroupParticipantCount() {
+        if (participantCountText == null) return;
+
+        apiService.getChatParticipants(chatId).enqueue(new Callback<List<Map<String, Object>>>() {
+            @Override
+            public void onResponse(Call<List<Map<String, Object>>> call, Response<List<Map<String, Object>>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    int count = response.body().size();
+
+
+                    int onlineCount = 0;
+                    for (Map<String, Object> participant : response.body()) {
+                        Object onlineObj = participant.get("online");
+                        if (onlineObj instanceof Boolean && (Boolean) onlineObj) {
+                            onlineCount++;
+                        }
+                    }
+
+                    if (onlineCount > 0) {
+                        participantCountText.setText(count + " участников • " + onlineCount + " онлайн");
+                    } else {
+                        participantCountText.setText(count + " участников");
+                    }
+                    Log.d(TAG, "✅ Loaded participants: " + count + " total, " + onlineCount + " online");
+                } else {
+                    Log.w(TAG, "⚠️ Failed to load participants: " + response.code());
+                    participantCountText.setText("Групповой чат");
+                }
+            }
+
+            @Override
+            public void onFailure(Call<List<Map<String, Object>>> call, Throwable t) {
+                Log.e(TAG, "❌ Network error loading participants", t);
+                participantCountText.setText("Групповой чат");
             }
         });
     }
 
     private void loadAvatarIntoView(String url) {
-        if (partnerAvatar == null) return;
-        if (url != null && !url.isEmpty() && url.startsWith("http")) {
-            Glide.with(this)
-                    .load(url.trim())
-                    .placeholder(R.drawable.bg_logo_gradient)
-                    .error(R.drawable.bg_logo_gradient)
-                    .circleCrop()
-                    .into(partnerAvatar);
-        } else {
-            partnerAvatar.setImageResource(R.drawable.bg_logo_gradient);
+        if (partnerAvatar == null) {
+            Log.e(TAG, "❌ partnerAvatar is null! Check activity_chat.xml");
+            return;
         }
+
+        Log.d(TAG, "🖼️ Loading avatar: " + url);
+
+        Glide.with(this)
+                .load(url)
+                .placeholder(R.drawable.bg_logo_gradient)
+                .error(R.drawable.bg_logo_gradient)
+                .circleCrop()
+                .listener(new RequestListener<android.graphics.drawable.Drawable>() {
+                    @Override
+                    public boolean onLoadFailed(@Nullable GlideException e,
+                                                Object model,
+                                                Target<android.graphics.drawable.Drawable> target,
+                                                boolean isFirstResource) {
+                        if (e != null) {
+                            Log.e(TAG, "❌ Glide error loading avatar: " + e.getMessage(), e);
+                            e.printStackTrace();
+                        }
+                        return false;
+                    }
+
+                    @Override
+                    public boolean onResourceReady(android.graphics.drawable.Drawable resource,
+                                                   Object model,
+                                                   Target<android.graphics.drawable.Drawable> target,
+                                                   com.bumptech.glide.load.DataSource dataSource,
+                                                   boolean isFirstResource) {
+                        Log.d(TAG, "✅ Avatar loaded successfully");
+                        return false;
+                    }
+                })
+                .into(partnerAvatar);
     }
 
     private void updatePartnerStatus(boolean isOnline) {
+        if (statusIcon == null || statusText == null) return;
+
         Log.d(TAG, "🎨 Updating UI: online=" + isOnline);
         runOnUiThread(() -> {
             if (isOnline) {
@@ -435,7 +669,7 @@ public class ChatActivity extends AppCompatActivity {
                         Long targetUserId = ((Number) userIdObj).longValue();
                         Boolean isOnline = (Boolean) onlineObj;
                         Log.d(TAG, "🎯 Personal response: user=" + targetUserId + ", online=" + isOnline);
-                        if (targetUserId == partnerUserId) {
+                        if (!isGroupChat && targetUserId == partnerUserId) {
                             AppStatusManager.getInstance().updateStatus(partnerUserId, isOnline, "personal_queue");
                             runOnUiThread(() -> updatePartnerStatus(isOnline));
                         }
@@ -489,7 +723,7 @@ public class ChatActivity extends AppCompatActivity {
         });
         Log.d(TAG, "📡 Subscribed to /topic/message/status");
 
-        if (partnerUserId > 0 && !partnerStatusSubscribed) {
+        if (!isGroupChat && partnerUserId > 0 && !partnerStatusSubscribed) {
             subscribeToPartnerStatus(currentUserId);
             partnerStatusSubscribed = true;
         }
@@ -547,6 +781,7 @@ public class ChatActivity extends AppCompatActivity {
             if (item.getType() == MessageItem.TYPE_INCOMING && item.getSenderId() > 0) {
                 partnerUserId = item.getSenderId();
                 Log.d(TAG, "🔍 Extracted partnerUserId=" + partnerUserId + " from history");
+
                 if (stompClient != null && stompClient.isConnected()) {
                     Log.d(TAG, "📡 Calling subscribeToPartnerStatus() after extraction");
                     subscribeToPartnerStatus(getCurrentUserId());
@@ -554,6 +789,10 @@ public class ChatActivity extends AppCompatActivity {
                 } else {
                     Log.w(TAG, "⚠️ WebSocket not connected yet, will subscribe later");
                 }
+
+
+                loadPartnerAvatar();
+
                 return;
             }
         }
@@ -597,6 +836,23 @@ public class ChatActivity extends AppCompatActivity {
                 String fileUrl = null;
                 String fileName = null;
                 long fileSize = 0;
+
+
+                String senderName = null;
+                String senderAvatarUrl = null;
+
+                if (msg.containsKey("sender") && msg.get("sender") instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> sender = (Map<String, Object>) msg.get("sender");
+                    Object nameObj = sender.get("username");
+                    if (nameObj instanceof String) {
+                        senderName = (String) nameObj;
+                    }
+                    Object avatarObj = sender.get("avatarUrl");
+                    if (avatarObj instanceof String) {
+                        senderAvatarUrl = (String) avatarObj;
+                    }
+                }
 
                 if (msg.containsKey("attachments") && msg.get("attachments") instanceof List) {
                     @SuppressWarnings("unchecked")
@@ -665,6 +921,14 @@ public class ChatActivity extends AppCompatActivity {
                     newItem.setImageUrl(fileUrl);
                     newItem.setFileName(fileName);
                     newItem.setFileSize(fileSize);
+                }
+
+
+                if (isGroupChat && senderName != null) {
+                    newItem.setSenderName(senderName);
+                }
+                if (isGroupChat && senderAvatarUrl != null) {
+                    newItem.setSenderAvatarUrl(senderAvatarUrl);
                 }
 
                 messageAdapter.addMessage(newItem);
@@ -776,7 +1040,9 @@ public class ChatActivity extends AppCompatActivity {
                                         markAllMessagesAsRead();
                                     }
                                 });
-                                tryExtractPartnerUserId(newMessages);
+                                if (!isGroupChat) {
+                                    tryExtractPartnerUserId(newMessages);
+                                }
                             }
 
                             if (backendMessages.size() < PAGE_SIZE) {
@@ -822,6 +1088,25 @@ public class ChatActivity extends AppCompatActivity {
 
             MessageType messageType = MessageType.TEXT;
             String fileUrl = null;
+            String fileName = null;
+            long fileSize = 0;
+
+            // 🔧 Извлекаем данные отправителя (для групповых чатов)
+            String senderName = null;
+            String senderAvatarUrl = null;
+
+            if (msg.containsKey("sender") && msg.get("sender") instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> sender = (Map<String, Object>) msg.get("sender");
+                Object nameObj = sender.get("username");
+                if (nameObj instanceof String) {
+                    senderName = (String) nameObj;
+                }
+                Object avatarObj = sender.get("avatarUrl");
+                if (avatarObj instanceof String) {
+                    senderAvatarUrl = (String) avatarObj;
+                }
+            }
 
             if (msg.containsKey("attachments") && msg.get("attachments") instanceof List) {
                 @SuppressWarnings("unchecked")
@@ -829,6 +1114,10 @@ public class ChatActivity extends AppCompatActivity {
                 if (!attachments.isEmpty()) {
                     Map<String, Object> firstAttachment = attachments.get(0);
                     fileUrl = (String) firstAttachment.get("fileUrl");
+                    fileName = (String) firstAttachment.get("fileName");
+                    if (firstAttachment.get("fileSize") instanceof Number) {
+                        fileSize = ((Number) firstAttachment.get("fileSize")).longValue();
+                    }
                     String attachmentType = (String) firstAttachment.get("fileType");
                     if (attachmentType != null && attachmentType.startsWith("image/")) {
                         messageType = MessageType.IMAGE;
@@ -845,6 +1134,17 @@ public class ChatActivity extends AppCompatActivity {
             if (fileUrl != null && !fileUrl.isEmpty()) {
                 item.setImageUrl(fileUrl);
             }
+            item.setFileName(fileName);
+            item.setFileSize(fileSize);
+
+
+            if (isGroupChat && senderName != null) {
+                item.setSenderName(senderName);
+            }
+            if (isGroupChat && senderAvatarUrl != null) {
+                item.setSenderAvatarUrl(senderAvatarUrl);
+            }
+
             items.add(item);
         }
         return items;
@@ -1101,67 +1401,6 @@ public class ChatActivity extends AppCompatActivity {
         });
     }
 
-    private void broadcastImageMessage(long messageId, AttachmentResponse attachment, long chatId) {
-        if (stompClient == null || !stompClient.isConnected()) {
-            Log.w(TAG, "⚠️ Cannot broadcast: WebSocket not connected");
-            return;
-        }
-
-        Map<String, Object> messagePayload = new HashMap<>();
-        messagePayload.put("id", messageId);
-        messagePayload.put("chatId", chatId);
-        messagePayload.put("senderId", getCurrentUserId());
-        messagePayload.put("text", "");
-        messagePayload.put("messageType", "image");
-        messagePayload.put("status", "sent");
-        messagePayload.put("createdAt", java.time.Instant.now().toString());
-
-        List<Map<String, Object>> attachments = new ArrayList<>();
-        Map<String, Object> attachmentData = new HashMap<>();
-        attachmentData.put("id", attachment.id);
-        attachmentData.put("fileUrl", attachment.fileUrl);
-        attachmentData.put("fileName", attachment.fileName);
-        attachmentData.put("fileSize", attachment.fileSize);
-        attachmentData.put("fileType", attachment.fileType);
-        attachmentData.put("thumbnailUrl", attachment.thumbnailUrl);
-        attachments.add(attachmentData);
-
-        messagePayload.put("attachments", attachments);
-
-        String destination = "/app/chat." + chatId + ".send";
-        Log.d(TAG, "📤 Broadcasting image via WebSocket to " + destination);
-        stompClient.send(destination, messagePayload);
-    }
-
-    private void broadcastImageMessageViaWebSocket(long messageId, AttachmentResponse attachment, long senderId) {
-        if (stompClient == null || !stompClient.isConnected()) {
-            Log.w(TAG, "⚠️ WebSocket not connected, skipping broadcast");
-            return;
-        }
-
-        Map<String, Object> messagePayload = new HashMap<>();
-        messagePayload.put("id", messageId);
-        messagePayload.put("chatId", chatId);
-        messagePayload.put("senderId", senderId);
-        messagePayload.put("text", "");
-        messagePayload.put("messageType", "image");
-        messagePayload.put("status", "sent");
-        messagePayload.put("createdAt", java.time.Instant.now().toString());
-
-        List<Map<String, Object>> attachments = new ArrayList<>();
-        Map<String, Object> att = new HashMap<>();
-        att.put("id", attachment.id);
-        att.put("fileUrl", attachment.fileUrl);
-        att.put("fileName", attachment.fileName);
-        att.put("fileSize", attachment.fileSize);
-        att.put("fileType", attachment.fileType);
-        attachments.add(att);
-        messagePayload.put("attachments", attachments);
-
-        Log.d(TAG, "📡 Broadcasting image message via WS: " + messageId);
-        stompClient.send("/app/chat.message", messagePayload);
-    }
-
     private void broadcastMessageViaWebSocket(long messageId, String text, String createdAt,
                                               long senderId, int status, MessageType messageType,
                                               List<Map<String, Object>> attachments) {
@@ -1233,14 +1472,50 @@ public class ChatActivity extends AppCompatActivity {
     }
 
     private void showChatMenu() {
-        String[] items = {"Очистить историю", "Выйти"};
-        new AlertDialog.Builder(this)
-                .setTitle(chatNameStr)
-                .setItems(items, (dialog, which) -> {
-                    if (which == 1) finish();
-                    else Toast.makeText(this, items[which], Toast.LENGTH_SHORT).show();
-                })
-                .show();
+        if (isGroupChat) {
+            String[] items = {"Информация о группе", "Добавить участников",
+                    "Очистить историю", "Выйти"};
+            new AlertDialog.Builder(this)
+                    .setTitle(chatNameStr)
+                    .setItems(items, (dialog, which) -> {
+                        switch (which) {
+                            case 0:
+                                showGroupInfo();
+                                break;
+                            case 1:
+                                addParticipants();
+                                break;
+                            case 2:
+                                Toast.makeText(this, "Очистить историю", Toast.LENGTH_SHORT).show();
+                                break;
+                            case 3:
+                                finish();
+                                break;
+                        }
+                    })
+                    .show();
+        } else {
+            String[] items = {"Очистить историю", "Выйти"};
+            new AlertDialog.Builder(this)
+                    .setTitle(chatNameStr)
+                    .setItems(items, (dialog, which) -> {
+                        if (which == 1) finish();
+                        else Toast.makeText(this, items[which], Toast.LENGTH_SHORT).show();
+                    })
+                    .show();
+        }
+    }
+
+    private void showGroupInfo() {
+        Intent intent = new Intent(this, GroupInfoActivity.class);
+        intent.putExtra("chat_id", chatId);
+        startActivity(intent);
+    }
+
+    private void addParticipants() {
+        Intent intent = new Intent(this, AddParticipantsActivity.class);
+        intent.putExtra("chat_id", chatId);
+        startActivityForResult(intent, REQUEST_ADD_PARTICIPANTS);
     }
 
     private void scrollToBottom(boolean smooth) {

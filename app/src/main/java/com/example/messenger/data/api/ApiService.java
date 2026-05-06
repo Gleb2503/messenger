@@ -29,14 +29,35 @@ public interface ApiService {
     @GET("chats")
     Call<List<Map<String, Object>>> getChats();
 
-    @POST("chats")
+    @POST("chats")  
     Call<Map<String, Object>> createChat(@Body Map<String, String> request);
+
+    @POST("chats") 
+    Call<Map<String, Object>> createGroupChat(@Body Map<String, Object> request);
 
     @PATCH("chats/{id}/pin")
     Call<Map<String, Object>> togglePin(@Path("id") Long chatId, @Body Map<String, Boolean> request);
 
     @DELETE("chats/{id}")
     Call<Void> deleteChat(@Path("id") Long chatId);
+
+    @GET("chats/{chatId}")
+    Call<Map<String, Object>> getChatInfo(@Path("chatId") Long chatId);
+
+    @GET("chat-members/chat/{chatId}")
+    Call<List<Map<String, Object>>> getChatParticipants(@Path("chatId") Long chatId);
+
+    @POST("chats/{chatId}/participants")
+    Call<Map<String, Object>> addParticipant(@Path("chatId") Long chatId, @Body Map<String, Long> request);
+
+    @DELETE("chats/{chatId}/participants/{userId}")
+    Call<Void> removeParticipant(@Path("chatId") Long chatId, @Path("userId") Long userId);
+
+    @PUT("chats/{chatId}/name")
+    Call<Map<String, Object>> updateGroupName(@Path("chatId") Long chatId, @Body Map<String, String> request);
+
+    @PUT("chats/{chatId}/avatar")
+    Call<Map<String, Object>> updateGroupAvatar(@Path("chatId") Long chatId, @Body Map<String, String> request);
 
     @GET("messages/chat/{chatId}")
     Call<List<Map<String, Object>>> getMessages(
@@ -76,6 +97,7 @@ public interface ApiService {
             @Path("userId") Long userId,
             @Body Map<String, Object> request
     );
+
     @GET("/api/contacts/user/{userId}")
     Call<List<Map<String, Object>>> getUserContacts(@Path("userId") Long userId);
 
@@ -90,4 +112,14 @@ public interface ApiService {
 
     @DELETE("/api/contacts/{id}")
     Call<Void> deleteContact(@Path("id") Long id);
+
+    @GET("/api/users/search")
+    Call<List<Map<String, Object>>> searchUsersByPhone(@Query("phone") String phone);
+
+    @Multipart
+    @POST("/api/chats/group/avatar")
+    Call<Map<String, Object>> uploadGroupAvatar(@Part MultipartBody.Part file);
+
+    @POST("/api/chat-members")
+    Call<Map<String, Object>> addParticipantToChat(@Body Map<String, Object> request);
 }

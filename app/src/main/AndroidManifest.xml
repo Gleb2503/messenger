@@ -62,6 +62,22 @@
             android:name=".contacts.ContactsActivity"
             android:exported="false"
             android:theme="@style/Theme.Messenger" />
+        <activity
+            android:name=".group.GroupInfoActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Messenger"/>
+
+        <activity
+            android:name=".group.AddParticipantsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Messenger"/>
+
+
+        <activity
+            android:name=".group.CreateGroupChatActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Messenger"
+            android:windowSoftInputMode="adjustResize"/>
 
 
     </application>

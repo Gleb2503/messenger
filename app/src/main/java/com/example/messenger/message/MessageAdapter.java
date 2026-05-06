@@ -50,6 +50,11 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
     private OnMediaClickListener mediaClickListener;
     private OnMediaViewerListener mediaViewerListener;
     private final List<MessageItem> items = new ArrayList<>();
+    private boolean isGroupChat = false;
+
+    public void setGroupChat(boolean groupChat) {
+        isGroupChat = groupChat;
+    }
 
     public void setOnMediaClickListener(OnMediaClickListener listener) {
         this.mediaClickListener = listener;
@@ -70,10 +75,12 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
             view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_chat_header, parent, false);
             return new HeaderViewHolder(view);
         } else if (viewType == TYPE_OUTGOING) {
-            view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_message_outgoing, parent, false);
+            int layoutRes = isGroupChat ? R.layout.item_message_group_outgoing : R.layout.item_message_outgoing;
+            view = LayoutInflater.from(parent.getContext()).inflate(layoutRes, parent, false);
             return new OutgoingMessageViewHolder(view);
         } else {
-            view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_message_incoming, parent, false);
+            int layoutRes = isGroupChat ? R.layout.item_message_group_incoming : R.layout.item_message_incoming;
+            view = LayoutInflater.from(parent.getContext()).inflate(layoutRes, parent, false);
             return new IncomingMessageViewHolder(view);
         }
     }
@@ -101,9 +108,9 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
         } else if (item.getType() == TYPE_HEADER && holder instanceof HeaderViewHolder) {
             ((HeaderViewHolder) holder).bind(item);
         } else if (item.getType() == TYPE_OUTGOING && holder instanceof OutgoingMessageViewHolder) {
-            ((OutgoingMessageViewHolder) holder).bind(item, mediaClickListener, mediaViewerListener, items);
+            ((OutgoingMessageViewHolder) holder).bind(item, mediaClickListener, mediaViewerListener, items, isGroupChat);
         } else if (item.getType() == TYPE_INCOMING && holder instanceof IncomingMessageViewHolder) {
-            ((IncomingMessageViewHolder) holder).bind(item, mediaClickListener, mediaViewerListener, items);
+            ((IncomingMessageViewHolder) holder).bind(item, mediaClickListener, mediaViewerListener, items, isGroupChat);
         }
     }
 
@@ -353,7 +360,7 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
         }
 
         void bind(MessageItem item, OnMediaClickListener mediaClickListener,
-                  OnMediaViewerListener mediaViewerListener, List<MessageItem> allItems) {
+                  OnMediaViewerListener mediaViewerListener, List<MessageItem> allItems, boolean isGroupChat) {
             if (isImageMessage(item)) {
                 messageText.setVisibility(View.GONE);
 
@@ -468,6 +475,8 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
         private final TextView messageText, timeText;
         private final ImageView statusIcon;
         private final ImageView imagePreview;
+        private final ImageView senderAvatar;
+        private final TextView senderName;
 
         IncomingMessageViewHolder(View itemView) {
             super(itemView);
@@ -475,10 +484,39 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
             timeText = itemView.findViewById(R.id.timeText);
             statusIcon = itemView.findViewById(R.id.statusIcon);
             imagePreview = itemView.findViewById(R.id.imagePreview);
+            senderAvatar = itemView.findViewById(R.id.senderAvatar);
+            senderName = itemView.findViewById(R.id.senderName);
         }
 
         void bind(MessageItem item, OnMediaClickListener mediaClickListener,
-                  OnMediaViewerListener mediaViewerListener, List<MessageItem> allItems) {
+                  OnMediaViewerListener mediaViewerListener, List<MessageItem> allItems, boolean isGroupChat) {
+
+
+            if (isGroupChat && senderAvatar != null && senderName != null) {
+                senderAvatar.setVisibility(View.VISIBLE);
+                senderName.setVisibility(View.VISIBLE);
+
+                String senderNameText = item.getSenderName() != null ? item.getSenderName() : "Пользователь";
+                senderName.setText(senderNameText);
+
+                String avatarUrl = item.getSenderAvatarUrl();
+                if (avatarUrl != null && !avatarUrl.isEmpty() && avatarUrl.startsWith("http")) {
+                    senderAvatar.setVisibility(View.VISIBLE);
+                    Glide.with(itemView.getContext())
+                            .load(avatarUrl)
+                            .circleCrop()
+                            .placeholder(R.drawable.bg_avatar_placeholder)
+                            .error(R.drawable.bg_avatar_placeholder)
+                            .into(senderAvatar);
+                } else {
+                    senderAvatar.setImageResource(R.drawable.bg_avatar_placeholder);
+                }
+            } else {
+
+                if (senderAvatar != null) senderAvatar.setVisibility(View.GONE);
+                if (senderName != null) senderName.setVisibility(View.GONE);
+            }
+
             if (isImageMessage(item)) {
                 messageText.setVisibility(View.GONE);
 
@@ -546,7 +584,10 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.MessageV
             }
 
             timeText.setText(item.getTime());
-            statusIcon.setVisibility(View.GONE);
+
+            if (statusIcon != null && !isGroupChat) {
+                statusIcon.setVisibility(View.GONE);
+            }
         }
     }
 
